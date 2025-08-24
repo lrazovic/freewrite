@@ -1,10 +1,3 @@
-//
-//  freewriteApp.swift
-//  freewrite
-//
-//  Created by thorfinn on 2/14/25.
-//
-
 import SwiftUI
 
 @main
@@ -31,18 +24,3 @@ struct freewriteApp: App {
         .windowResizability(.contentSize)
     }
 }
-
-// Add AppDelegate to handle window configuration
-class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        if let window = NSApplication.shared.windows.first {
-            // Ensure window starts in windowed mode
-            if window.styleMask.contains(.fullScreen) {
-                window.toggleFullScreen(nil)
-            }
-            
-            // Center the window on the screen
-            window.center()
-        }
-    }
-} 
