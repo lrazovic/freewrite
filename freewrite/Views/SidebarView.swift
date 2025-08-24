@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 struct SidebarView: View {
@@ -13,7 +12,8 @@ struct SidebarView: View {
             Button(action: {
                 NSWorkspace.shared.selectFile(
                     nil,
-                    inFileViewerRootedAtPath: entryManager.getDocumentsDirectory().path
+                    inFileViewerRootedAtPath:
+                        entryManager.getDocumentsDirectory().path
                 )
             }) {
                 HStack {
@@ -56,8 +56,7 @@ struct SidebarView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(entryManager.entries) { entry in
                         Button(action: {
-                            if entryManager.selectedEntryId != entry.id
-                            {
+                            if entryManager.selectedEntryId != entry.id {
                                 // Save current entry before switching
                                 if let currentId = entryManager
                                     .selectedEntryId,
@@ -89,8 +88,7 @@ struct SidebarView: View {
                             }
                         }) {
                             HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 4)
-                                {
+                                VStack(alignment: .leading, spacing: 4) {
                                     HStack {
                                         if entry.isPreviewLoading {
                                             Text("Loading...")
@@ -117,10 +115,12 @@ struct SidebarView: View {
                                             HStack(spacing: 8) {
                                                 // Export PDF button
                                                 Button(action: {
-                                                    entryManager.exportEntryAsPDF(
-                                                        entry: entry,
-                                                        appearance: appearance
-                                                    )
+                                                    entryManager
+                                                        .exportEntryAsPDF(
+                                                            entry: entry,
+                                                            appearance:
+                                                                appearance
+                                                        )
                                                 }) {
                                                     Image(
                                                         systemName:

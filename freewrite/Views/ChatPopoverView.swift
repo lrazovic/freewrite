@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 struct ChatPopoverView: View {
@@ -14,28 +13,28 @@ struct ChatPopoverView: View {
                 )
 
             // Calculate potential URL lengths
-            let gptFullText = 
+            let gptFullText =
                 Constants.aiChatPrompt + "\n\n" + trimmedText
-            let claudeFullText = 
+            let claudeFullText =
                 Constants.claudePrompt + "\n\n" + trimmedText
-            let encodedGptText = 
+            let encodedGptText =
                 gptFullText.addingPercentEncoding(
                     withAllowedCharacters:
                         .urlQueryAllowed
                 ) ?? ""
-            let encodedClaudeText = 
+            let encodedClaudeText =
                 claudeFullText.addingPercentEncoding(
                     withAllowedCharacters:
                         .urlQueryAllowed
                 ) ?? ""
 
-            let gptUrlLength = 
+            let gptUrlLength =
                 "https://chat.openai.com/?m=".count
                 + encodedGptText.count
-            let claudeUrlLength = 
+            let claudeUrlLength =
                 "https://claude.ai/new?q=".count
                 + encodedClaudeText.count
-            let isUrlTooLong = 
+            let isUrlTooLong =
                 gptUrlLength > 6000
                 || claudeUrlLength > 6000
 
@@ -219,7 +218,7 @@ struct ChatPopoverView: View {
         if let encodedText = fullText.addingPercentEncoding(
             withAllowedCharacters: .urlQueryAllowed
         ),
-            let url = URL(string: "https://chat.openai.com/?m=" + encodedText) 
+            let url = URL(string: "https://chat.openai.com/?m=" + encodedText)
         {
             NSWorkspace.shared.open(url)
         }
@@ -234,7 +233,7 @@ struct ChatPopoverView: View {
         if let encodedText = fullText.addingPercentEncoding(
             withAllowedCharacters: .urlQueryAllowed
         ),
-            let url = URL(string: "https://claude.ai/new?q=" + encodedText) 
+            let url = URL(string: "https://claude.ai/new?q=" + encodedText)
         {
             NSWorkspace.shared.open(url)
         }

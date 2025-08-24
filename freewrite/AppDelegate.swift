@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 // Add AppDelegate to handle window configuration
@@ -9,9 +8,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if window.styleMask.contains(.fullScreen) {
                 window.toggleFullScreen(nil)
             }
-            
+
             // Center the window on the screen
             window.center()
         }
     }
-} 
+}

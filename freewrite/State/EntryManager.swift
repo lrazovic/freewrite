@@ -1,6 +1,5 @@
-
-import Foundation
 import AppKit
+import Foundation
 import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -80,7 +79,7 @@ class EntryManager: ObservableObject {
 
             // Update UI on main thread
             await MainActor.run {
-                if let index = entries.firstIndex(where: { $0.id == entry.id }) 
+                if let index = entries.firstIndex(where: { $0.id == entry.id })
                 {
                     entries[index].previewText = truncated
                 }
@@ -143,7 +142,7 @@ class EntryManager: ObservableObject {
                     let resourceValues = try fileURL.resourceValues(
                         forKeys: Set(resourceKeys)
                     )
-                    let modificationDate = 
+                    let modificationDate =
                         resourceValues.contentModificationDate ?? Date()
 
                     // Parse the date string for display
@@ -181,7 +180,7 @@ class EntryManager: ObservableObject {
             }
 
             // Sort by modification date (most recent first)
-            self.entries = 
+            self.entries =
                 entriesWithDates
                 .sorted {
                     $0.entry.modificationDate > $1.entry.modificationDate
@@ -351,7 +350,7 @@ class EntryManager: ObservableObject {
             }
         }
     }
-    
+
     // Extract a title from entry content for PDF export
     private func extractTitleFromContent(_ content: String, date: String)
         -> String
@@ -367,7 +366,7 @@ class EntryManager: ObservableObject {
         }
 
         // Split content into words, ignoring newlines and removing punctuation
-        let words = 
+        let words =
             trimmedContent
             .replacingOccurrences(of: "\n", with: " ")
             .components(separatedBy: .whitespaces)
@@ -421,7 +420,10 @@ class EntryManager: ObservableObject {
             // Show save dialog
             if savePanel.runModal() == .OK, let url = savePanel.url {
                 // Create PDF data
-                if let pdfData = createPDFFromText(text: entryContent, appearance: appearance) {
+                if let pdfData = createPDFFromText(
+                    text: entryContent,
+                    appearance: appearance
+                ) {
                     try pdfData.write(to: url)
                     print("Successfully exported PDF to: \(url.path)")
                 }
@@ -431,7 +433,9 @@ class EntryManager: ObservableObject {
         }
     }
 
-    private func createPDFFromText(text: String, appearance: AppearanceSettings) -> Data? {
+    private func createPDFFromText(text: String, appearance: AppearanceSettings)
+        -> Data?
+    {
         // Letter size page dimensions
         let pageWidth: CGFloat = 612.0  // 8.5 x 72
         let pageHeight: CGFloat = 792.0  // 11 x 72
@@ -450,11 +454,12 @@ class EntryManager: ObservableObject {
 
         // Configure text formatting attributes
         let paragraphStyle = NSMutableParagraphStyle()
-        let font = 
+        let font =
             NSFont(name: appearance.selectedFont, size: appearance.fontSize)
             ?? .systemFont(ofSize: appearance.fontSize)
         let defaultLineHeight = font.ascender - font.descender + font.leading
-        paragraphStyle.lineSpacing = (appearance.fontSize * 1.5) - defaultLineHeight
+        paragraphStyle.lineSpacing =
+            (appearance.fontSize * 1.5) - defaultLineHeight
 
         let textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -482,7 +487,7 @@ class EntryManager: ObservableObject {
         )
 
         // Create a PDF context with the data consumer
-        guard 
+        guard
             let pdfContext = CGContext(
                 consumer: CGDataConsumer(data: pdfData as CFMutableData)!,
                 mediaBox: nil,

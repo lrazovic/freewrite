@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 // Add helper extension to find NSTextView
