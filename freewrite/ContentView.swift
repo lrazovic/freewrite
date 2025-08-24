@@ -18,6 +18,35 @@ class AppearanceSettings: ObservableObject {
     @Published var currentRandomFont: String = ""
     @Published var fontSize: CGFloat = 18
     @Published var colorScheme: ColorScheme = .light
+    
+    // Theme colors computed properties (DRY principle)
+    var backgroundColor: Color {
+        colorScheme == .light ? .white : .black
+    }
+    
+    var textColor: Color {
+        colorScheme == .light ? Color(red: 0.20, green: 0.20, blue: 0.20) : Color(red: 0.9, green: 0.9, blue: 0.9)
+    }
+    
+    var placeholderTextColor: Color {
+        colorScheme == .light ? .gray.opacity(0.5) : .gray.opacity(0.6)
+    }
+    
+    var primaryActionColor: Color {
+        colorScheme == .light ? .black : .white
+    }
+    
+    var secondaryTextColor: Color {
+        colorScheme == .light ? .gray : .gray.opacity(0.8)
+    }
+    
+    var popoverBackgroundColor: Color {
+        colorScheme == .light ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
+    }
+    
+    var popoverTextColor: Color {
+        colorScheme == .light ? Color.primary : Color.white
+    }
 
     init() {
         // Load saved color scheme preference
@@ -258,48 +287,6 @@ struct ContentView: View {
         return documentsDirectory
     }
 
-    // Add function to save text
-    private func saveText() {
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent("entry.md")
-
-        print("Attempting to save file to: \(fileURL.path)")
-
-        do {
-            try entryManager.text.write(
-                to: fileURL,
-                atomically: true,
-                encoding: .utf8
-            )
-            print("Successfully saved file")
-        } catch {
-            print("Error saving file: \(error)")
-            print("Error details: \(error.localizedDescription)")
-        }
-    }
-
-    // Add function to load text
-    private func loadText() {
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent("entry.md")
-
-        print("Attempting to load file from: \(fileURL.path)")
-
-        do {
-            if fileManager.fileExists(atPath: fileURL.path) {
-                entryManager.text = try String(
-                    contentsOf: fileURL,
-                    encoding: .utf8
-                )
-                print("Successfully loaded file")
-            } else {
-                print("File does not exist yet")
-            }
-        } catch {
-            print("Error loading file: \(error)")
-            print("Error details: \(error.localizedDescription)")
-        }
-    }
 
     // Add function to load existing entries (metadata only)
     private func loadExistingEntries() {
@@ -453,14 +440,9 @@ struct ContentView: View {
 
     var timerColor: Color {
         if timer.timerIsRunning {
-            return hoverStates.isHoveringTimer
-                ? (appearance.colorScheme == .light ? .black : .white)
-                : .gray.opacity(0.8)
+            return hoverStates.isHoveringTimer ? appearance.primaryActionColor : .gray.opacity(0.8)
         } else {
-            return hoverStates.isHoveringTimer
-                ? (appearance.colorScheme == .light ? .black : .white)
-                : (appearance.colorScheme == .light
-                    ? .gray : .gray.opacity(0.8))
+            return hoverStates.isHoveringTimer ? appearance.primaryActionColor : appearance.secondaryTextColor
         }
     }
 
@@ -481,30 +463,15 @@ struct ContentView: View {
         return appearance.fontSize / 2
     }
 
-    // Add a color utility computed property
-    var popoverBackgroundColor: Color {
-        return appearance.colorScheme == .light
-            ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
-    }
-
-    var popoverTextColor: Color {
-        return appearance.colorScheme == .light ? Color.primary : Color.white
-    }
+    // Colors now centralized in AppearanceSettings
 
     var body: some View {
-        let buttonBackground =
-            appearance.colorScheme == .light ? Color.white : Color.black
         let navHeight: CGFloat = 68
-        let textColor =
-            appearance.colorScheme == .light
-            ? Color.gray : Color.gray.opacity(0.8)
-        let textHoverColor =
-            appearance.colorScheme == .light ? Color.black : Color.white
 
         HStack(spacing: 0) {
             // Main content
             ZStack {
-                Color(appearance.colorScheme == .light ? .white : .black)
+                appearance.backgroundColor
                     .ignoresSafeArea()
 
                 TextEditor(
@@ -523,16 +490,12 @@ struct ContentView: View {
                     )
                 )
                 .background(
-                    Color(appearance.colorScheme == .light ? .white : .black)
+                    appearance.backgroundColor
                 )
                 .font(
                     .custom(appearance.selectedFont, size: appearance.fontSize)
                 )
-                .foregroundColor(
-                    appearance.colorScheme == .light
-                        ? Color(red: 0.20, green: 0.20, blue: 0.20)
-                        : Color(red: 0.9, green: 0.9, blue: 0.9)
-                )
+                .foregroundColor(appearance.textColor)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
                 .lineSpacing(lineHeight)
@@ -557,11 +520,7 @@ struct ContentView: View {
                                         size: appearance.fontSize
                                     )
                                 )
-                                .foregroundColor(
-                                    appearance.colorScheme == .light
-                                        ? .gray.opacity(0.5)
-                                        : .gray.opacity(0.6)
-                                )
+                                .foregroundColor(appearance.placeholderTextColor)
                                 .allowsHitTesting(false)
                                 .offset(x: 5, y: placeholderOffset)
                         }
@@ -592,7 +551,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.isHoveringSize
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.isHoveringSize = hovering
@@ -614,7 +573,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.hoveredFont == "Lato"
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.hoveredFont =
@@ -637,7 +596,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.hoveredFont == "Palatino"
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.hoveredFont =
@@ -660,7 +619,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.hoveredFont == "System"
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.hoveredFont =
@@ -683,7 +642,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.hoveredFont == "Serif"
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.hoveredFont =
@@ -710,7 +669,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.hoveredFont == "Random"
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.hoveredFont =
@@ -800,7 +759,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.isHoveringChat
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.isHoveringChat = hovering
@@ -856,7 +815,7 @@ struct ContentView: View {
                                             "Hey, your entry is long. It'll break the URL. Instead, copy prompt by clicking below and paste into AI of your choice!"
                                         )
                                         .font(.system(size: 14))
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .lineLimit(nil)
                                         .multilineTextAlignment(.leading)
                                         .frame(width: 200, alignment: .leading)
@@ -881,7 +840,7 @@ struct ContentView: View {
                                             .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .onHover { hovering in
                                             if hovering {
                                                 NSCursor.pointingHand.push()
@@ -899,7 +858,7 @@ struct ContentView: View {
                                             "Yo. Sorry, you can't chat with the guide lol. Please write your own entry."
                                         )
                                         .font(.system(size: 14))
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .frame(width: 250)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
@@ -908,7 +867,7 @@ struct ContentView: View {
                                             "Please free write for at minimum 5 minutes first. Then click this. Trust."
                                         )
                                         .font(.system(size: 14))
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .frame(width: 250)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
@@ -927,7 +886,7 @@ struct ContentView: View {
                                                 .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .onHover { hovering in
                                             if hovering {
                                                 NSCursor.pointingHand.push()
@@ -951,7 +910,7 @@ struct ContentView: View {
                                                 .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .onHover { hovering in
                                             if hovering {
                                                 NSCursor.pointingHand.push()
@@ -979,7 +938,7 @@ struct ContentView: View {
                                             .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
-                                        .foregroundColor(popoverTextColor)
+                                        .foregroundColor(appearance.popoverTextColor)
                                         .onHover { hovering in
                                             if hovering {
                                                 NSCursor.pointingHand.push()
@@ -990,7 +949,7 @@ struct ContentView: View {
                                     }
                                 }
                                 .frame(minWidth: 120, maxWidth: 250)  // Allow width to adjust
-                                .background(popoverBackgroundColor)
+                                .background(appearance.popoverBackgroundColor)
                                 .cornerRadius(8)
                                 .shadow(
                                     color: Color.black.opacity(0.1),
@@ -1022,7 +981,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.isHoveringFullscreen
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.isHoveringFullscreen = hovering
@@ -1046,7 +1005,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .foregroundColor(
                                 hoverStates.isHoveringNewEntry
-                                    ? textHoverColor : textColor
+                                    ? appearance.primaryActionColor : appearance.secondaryTextColor
                             )
                             .onHover { hovering in
                                 hoverStates.isHoveringNewEntry = hovering
@@ -1079,7 +1038,7 @@ struct ContentView: View {
                                 )
                                 .foregroundColor(
                                     hoverStates.isHoveringThemeToggle
-                                        ? textHoverColor : textColor
+                                        ? appearance.primaryActionColor : appearance.secondaryTextColor
                                 )
                             }
                             .buttonStyle(.plain)
@@ -1105,7 +1064,7 @@ struct ContentView: View {
                                 Image(systemName: "clock.arrow.circlepath")
                                     .foregroundColor(
                                         hoverStates.isHoveringClock
-                                            ? textHoverColor : textColor
+                                            ? appearance.primaryActionColor : appearance.secondaryTextColor
                                     )
                             }
                             .buttonStyle(.plain)
@@ -1167,13 +1126,13 @@ struct ContentView: View {
                                         .font(.system(size: 13))
                                         .foregroundColor(
                                             hoverStates.isHoveringHistory
-                                                ? textHoverColor : textColor
+                                                ? appearance.primaryActionColor : appearance.secondaryTextColor
                                         )
                                     Image(systemName: "arrow.up.right")
                                         .font(.system(size: 10))
                                         .foregroundColor(
                                             hoverStates.isHoveringHistory
-                                                ? textHoverColor : textColor
+                                                ? appearance.primaryActionColor : appearance.secondaryTextColor
                                         )
                                 }
                                 Text(getDocumentsDirectory().path)
