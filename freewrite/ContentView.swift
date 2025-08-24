@@ -1,9 +1,10 @@
-// Swift 5.0
+// Swift 6.0
 //
 //  ContentView.swift
 //  freewrite
 //
 //  Created by thorfinn on 2/14/25.
+//  Modified by Leonardo Razovic later on.
 //
 
 import AppKit
@@ -120,7 +121,7 @@ class EntryManager: ObservableObject {
         }
     }
 
-    private func saveEntryAsync(entry: HumanEntry) async {
+    func saveEntryAsync(entry: HumanEntry) async {
         let textToSave = await MainActor.run { text }
 
         do {
@@ -219,14 +220,14 @@ struct ContentView: View {
     ]
     private let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
     private let placeholderOptions = [
-        "\n\nBegin writing",
-        "\n\nPick a thought and go",
-        "\n\nStart typing",
-        "\n\nWhat's on your mind",
-        "\n\nJust start",
-        "\n\nType your first thought",
-        "\n\nStart with one sentence",
-        "\n\nJust say it",
+        "Begin writing",
+        "Pick a thought and go",
+        "Start typing",
+        "What's on your mind",
+        "Just start",
+        "Type your first thought",
+        "Start with one sentence",
+        "Just say it",
     ]
 
     // Add file manager
@@ -458,15 +459,8 @@ struct ContentView: View {
         return "\(Int(appearance.fontSize))px"
     }
 
-    var placeholderOffset: CGFloat {
-        // Instead of using calculated line height, use a simple offset
-        return appearance.fontSize / 2
-    }
-
-    // Colors now centralized in AppearanceSettings
-
     var body: some View {
-        let navHeight: CGFloat = 68
+        let navHeight: CGFloat = 64
 
         HStack(spacing: 0) {
             // Main content
@@ -474,39 +468,32 @@ struct ContentView: View {
                 appearance.backgroundColor
                     .ignoresSafeArea()
 
-                TextEditor(
-                    text: Binding(
-                        get: { entryManager.text },
-                        set: { newValue in
-                            // Ensure the text always starts with two newlines
-                            if !newValue.hasPrefix("\n\n") {
-                                entryManager.text =
-                                    "\n\n"
-                                    + newValue.trimmingCharacters(in: .newlines)
-                            } else {
-                                entryManager.text = newValue
-                            }
-                        }
-                    )
-                )
-                .background(
-                    appearance.backgroundColor
-                )
-                .font(
-                    .custom(appearance.selectedFont, size: appearance.fontSize)
-                )
-                .foregroundColor(appearance.textColor)
-                .scrollContentBackground(.hidden)
-                .scrollIndicators(.never)
-                .lineSpacing(lineHeight)
-                .frame(maxWidth: 650)
-                .padding(.bottom, uiState.bottomNavOpacity > 0 ? navHeight : 0)
-                .ignoresSafeArea()
-                .colorScheme(appearance.colorScheme)
+                VStack(spacing: 2) {
+                    Spacer()
+                        .frame(height: lineHeight * 8)
+                    
+                    
+                    TextEditor(text: $entryManager.text)
+                        .background(appearance.backgroundColor)
+                        .font(.custom(appearance.selectedFont, size: appearance.fontSize))
+                        .foregroundColor(appearance.textColor)
+                        .scrollContentBackground(.hidden)
+                        .scrollIndicators(.never)
+                        .lineSpacing(lineHeight)
+                        .frame(maxWidth: 660)
+                        .autocorrectionDisabled(false)
+                        .colorScheme(appearance.colorScheme)
+                    
+                    // Bottom spacing for nav area
+                    if uiState.bottomNavOpacity > 0 {
+                        Spacer()
+                            .frame(height: navHeight)
+                    }
+                }
                 .onAppear {
                     uiState.placeholderText =
                         placeholderOptions.randomElement()
-                        ?? "\n\nBegin writing"
+                        ?? "Begin writing"
                 }
                 .overlay(
                     ZStack(alignment: .topLeading) {
@@ -522,7 +509,6 @@ struct ContentView: View {
                                 )
                                 .foregroundColor(appearance.placeholderTextColor)
                                 .allowsHitTesting(false)
-                                .offset(x: 5, y: placeholderOffset)
                         }
                     },
                     alignment: .topLeading
@@ -532,7 +518,6 @@ struct ContentView: View {
                 } action: { height in
                     uiState.viewHeight = height
                 }
-                .contentMargins(.bottom, uiState.viewHeight / 4)
 
                 VStack {
                     Spacer()
@@ -1167,13 +1152,20 @@ struct ContentView: View {
                                                     $0.id == currentId
                                                 })
                                         {
-                                            entryManager.saveEntry(
-                                                entry: currentEntry
-                                            )
+                                            // Save immediately with current text content
+                                            Task {
+                                                await entryManager.saveEntryAsync(entry: currentEntry)
+                                                // Only switch after saving is complete
+                                                await MainActor.run {
+                                                    entryManager.selectedEntryId = entry.id
+                                                    loadEntry(entry: entry)
+                                                }
+                                            }
+                                        } else {
+                                            // No current entry to save, switch immediately
+                                            entryManager.selectedEntryId = entry.id
+                                            loadEntry(entry: entry)
                                         }
-
-                                        entryManager.selectedEntryId = entry.id
-                                        loadEntry(entry: entry)
                                     }
                                 }) {
                                     HStack(alignment: .top) {
@@ -1506,11 +1498,11 @@ struct ContentView: View {
             // Save the welcome message immediately
             entryManager.saveEntry(entry: newEntry)
         } else {
-            // Regular new entry starts with newlines
-            entryManager.text = "\n\n"
+            // Regular new entry starts empty
+            entryManager.text = ""
             // Randomize placeholder text for new entry
             uiState.placeholderText =
-                placeholderOptions.randomElement() ?? "\n\nBegin writing"
+                placeholderOptions.randomElement() ?? "Begin writing"
             // Save the empty entry
             entryManager.saveEntry(entry: newEntry)
         }
