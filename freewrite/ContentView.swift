@@ -102,9 +102,9 @@ struct ContentView: View {
         "\n\nJust say it"
     ]
     
-    // Add file manager and save timer
+    // Add file manager and debounce timer
     private let fileManager = FileManager.default
-    private let saveTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    @State private var debounceTimer: Timer?
     
     // Add cached documents directory
     private let documentsDirectory: URL = {
@@ -1041,10 +1041,15 @@ struct ContentView: View {
             loadExistingEntries()
         }
         .onChange(of: text) { oldValue, newValue in
-            // Save current entry when text changes
-            if let currentId = selectedEntryId,
-               let currentEntry = entries.first(where: { $0.id == currentId }) {
-                saveEntry(entry: currentEntry)
+            // Debounce text saving to minimize I/O
+            debounceTimer?.invalidate()
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                Task { @MainActor in
+                    if let currentId = selectedEntryId,
+                       let currentEntry = entries.first(where: { $0.id == currentId }) {
+                        saveEntry(entry: currentEntry)
+                    }
+                }
             }
         }
         .onReceive(timer) { _ in
