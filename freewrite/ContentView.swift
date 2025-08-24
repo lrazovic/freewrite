@@ -63,6 +63,13 @@ struct ContentView: View {
                 entryManager.debouncedSave(entry: currentEntry)
             }
         }
+        .onReceive(systemTimer) { _ in
+            if timer.timerIsRunning && timer.timeRemaining > 0 {
+                timer.timeRemaining -= 1
+            } else if timer.timeRemaining == 0 {
+                timer.timerIsRunning = false
+            }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: NSWindow.willEnterFullScreenNotification
