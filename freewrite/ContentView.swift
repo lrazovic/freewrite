@@ -49,7 +49,7 @@ struct ContentView: View {
     @State private var text: String = ""  // Remove initial welcome text since we'll handle it in createNewEntry
     
     @State private var isFullscreen = false
-    @State private var selectedFont: String = "Lato-Regular"
+    @State private var selectedFont: String = "Palatino"
     @State private var currentRandomFont: String = ""
     @State private var timeRemaining: Int = 900  // Changed to 900 seconds (15 minutes)
     @State private var timerIsRunning = false
@@ -89,7 +89,7 @@ struct ContentView: View {
     let entryHeight: CGFloat = 40
     
     let availableFonts = NSFontManager.shared.availableFontFamilies
-    let standardFonts = ["Lato-Regular", "Arial", ".AppleSystemUIFont", "Times New Roman"]
+    let standardFonts = ["Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino"]
     let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
     let placeholderOptions = [
         "\n\nBegin writing",
@@ -491,14 +491,14 @@ struct ContentView: View {
                             Text("•")
                                 .foregroundColor(.gray)
                             
-                            Button("Arial") {
-                                selectedFont = "Arial"
+                            Button("Palatino") {
+                                selectedFont = "Palatino"
                                 currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "Arial" ? textHoverColor : textColor)
+                            .foregroundColor(hoveredFont == "Palatino" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "Arial" : nil
+                                hoveredFont = hovering ? "Palatino" : nil
                                 isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -767,7 +767,7 @@ struct ContentView: View {
                                 .cornerRadius(8)
                                 .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
                                 // Reset copied state when popover dismisses
-                                .onChange(of: showingChatMenu) { newValue in
+                                .onChange(of: showingChatMenu) { oldValue, newValue in
                                     if !newValue {
                                         didCopyPrompt = false
                                     }
@@ -1040,7 +1040,7 @@ struct ContentView: View {
             showingSidebar = false  // Hide sidebar by default
             loadExistingEntries()
         }
-        .onChange(of: text) { _ in
+        .onChange(of: text) { oldValue, newValue in
             // Save current entry when text changes
             if let currentId = selectedEntryId,
                let currentEntry = entries.first(where: { $0.id == currentId }) {
