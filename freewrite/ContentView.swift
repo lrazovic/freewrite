@@ -73,30 +73,42 @@ class EntryManager: ObservableObject {
     private let fileManager = FileManager.default
     
     func saveEntry(entry: HumanEntry) {
-        do {
-            try text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
-            print("Successfully saved entry: \(entry.filename)")
-            
-            // Update preview after saving
-            let preview = text
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
-            
-            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries[index].previewText = truncated
-            }
-        } catch {
-            print("Error saving entry: \(error)")
+        Task.detached {
+            await self.saveEntryAsync(entry: entry)
         }
     }
     
     func debouncedSave(entry: HumanEntry) {
         debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-            Task { @MainActor in
-                self.saveEntry(entry: entry)
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            Task.detached {
+                await self.saveEntryAsync(entry: entry)
             }
+        }
+    }
+    
+    private func saveEntryAsync(entry: HumanEntry) async {
+        let textToSave = await MainActor.run { text }
+        
+        do {
+            // Perform file I/O on background thread
+            try textToSave.write(to: entry.fileURL, atomically: true, encoding: .utf8)
+            print("Successfully saved entry: \(entry.filename)")
+            
+            // Generate preview on background thread
+            let preview = textToSave
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
+            
+            // Update UI on main thread
+            await MainActor.run {
+                if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                    entries[index].previewText = truncated
+                }
+            }
+        } catch {
+            print("Error saving entry: \(error)")
         }
     }
 }
@@ -1142,22 +1154,7 @@ struct ContentView: View {
     }
     
     private func saveEntry(entry: HumanEntry) {
-        do {
-            try entryManager.text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
-            print("Successfully saved entry: \(entry.filename)")
-            
-            // Update preview after saving
-            let preview = entryManager.text
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
-            
-            if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
-                entryManager.entries[index].previewText = truncated
-            }
-        } catch {
-            print("Error saving entry: \(error)")
-        }
+        entryManager.saveEntry(entry: entry)
     }
     
     private func loadEntry(entry: HumanEntry) {
@@ -1413,10 +1410,6 @@ struct ContentView: View {
     }
 }
 
-// Helper function to calculate line height
-func getLineHeight(font: NSFont) -> CGFloat {
-    return font.ascender - font.descender + font.leading
-}
 
 // Add helper extension to find NSTextView
 extension NSView {
