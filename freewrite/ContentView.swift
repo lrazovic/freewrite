@@ -6,10 +6,10 @@
 //  Created by thorfinn on 2/14/25.
 //
 
-import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import PDFKit
+import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - State Management Classes
 
@@ -18,10 +18,11 @@ class AppearanceSettings: ObservableObject {
     @Published var currentRandomFont: String = ""
     @Published var fontSize: CGFloat = 18
     @Published var colorScheme: ColorScheme = .light
-    
+
     init() {
         // Load saved color scheme preference
-        let savedScheme = UserDefaults.standard.string(forKey: "colorScheme") ?? "light"
+        let savedScheme =
+            UserDefaults.standard.string(forKey: "colorScheme") ?? "light"
         colorScheme = savedScheme == "dark" ? .dark : .light
     }
 }
@@ -68,42 +69,55 @@ class EntryManager: ObservableObject {
     @Published var entries: [HumanEntry] = []
     @Published var selectedEntryId: UUID? = nil
     @Published var text: String = ""
-    
+
     private var debounceTimer: Timer?
     private let fileManager = FileManager.default
-    
+
     func saveEntry(entry: HumanEntry) {
         Task.detached {
             await self.saveEntryAsync(entry: entry)
         }
     }
-    
+
     func debouncedSave(entry: HumanEntry) {
         debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+        debounceTimer = Timer.scheduledTimer(
+            withTimeInterval: 1.0,
+            repeats: false
+        ) { _ in
             Task.detached {
                 await self.saveEntryAsync(entry: entry)
             }
         }
     }
-    
+
     private func saveEntryAsync(entry: HumanEntry) async {
         let textToSave = await MainActor.run { text }
-        
+
         do {
             // Perform file I/O on background thread
-            try textToSave.write(to: entry.fileURL, atomically: true, encoding: .utf8)
+            try textToSave.write(
+                to: entry.fileURL,
+                atomically: true,
+                encoding: .utf8
+            )
             print("Successfully saved entry: \(entry.filename)")
-            
+
             // Generate preview on background thread
-            let preview = textToSave
+            let preview =
+                textToSave
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
-            
+            let truncated =
+                preview.isEmpty
+                ? ""
+                : (preview.count > 30
+                    ? String(preview.prefix(30)) + "..." : preview)
+
             // Update UI on main thread
             await MainActor.run {
-                if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                if let index = entries.firstIndex(where: { $0.id == entry.id })
+                {
                     entries[index].previewText = truncated
                 }
             }
@@ -121,21 +135,24 @@ struct HumanEntry: Identifiable {
     let modificationDate: Date
     var previewText: String?  // nil means not loaded yet
     var isPreviewLoading: Bool = false
-    
+
     static func createNew() -> HumanEntry {
         let id = UUID()
         let now = Date()
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
         let dateString = dateFormatter.string(from: now)
-        
+
         // For display
         dateFormatter.dateFormat = "MMM d"
         let displayDate = dateFormatter.string(from: now)
-        
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Freewrite")
+
+        let documentsDirectory = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("Freewrite")
         let filename = "[\(id)]-[\(dateString)].md"
-        
+
         return HumanEntry(
             id: id,
             date: displayDate,
@@ -160,104 +177,120 @@ struct ContentView: View {
     @StateObject private var hoverStates = HoverStates()
     @StateObject private var uiState = UIState()
     @StateObject private var entryManager = EntryManager()
-    
+
     // MARK: - Constants
     private let headerString = "\n\n"
-    private let systemTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let systemTimer = Timer.publish(every: 1, on: .main, in: .common)
+        .autoconnect()
     private let entryHeight: CGFloat = 40
-    
+
     private let availableFonts = NSFontManager.shared.availableFontFamilies
-    private let standardFonts = ["Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino"]
+    private let standardFonts = [
+        "Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino",
+    ]
     private let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
     private let placeholderOptions = [
         "\n\nBegin writing",
-        "\n\nPick a thought and go", 
+        "\n\nPick a thought and go",
         "\n\nStart typing",
         "\n\nWhat's on your mind",
         "\n\nJust start",
         "\n\nType your first thought",
         "\n\nStart with one sentence",
-        "\n\nJust say it"
+        "\n\nJust say it",
     ]
-    
+
     // Add file manager
     private let fileManager = FileManager.default
-    
+
     // Add cached documents directory
     private let documentsDirectory: URL = {
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Freewrite")
-        
+        let directory = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0].appendingPathComponent("Freewrite")
+
         // Create Freewrite directory if it doesn't exist
         if !FileManager.default.fileExists(atPath: directory.path) {
             do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
                 print("Successfully created Freewrite directory")
             } catch {
                 print("Error creating directory: \(error)")
             }
         }
-        
+
         return directory
     }()
-    
+
     // Add shared prompt constant
     private let aiChatPrompt = """
-    below is my journal entry. wyt? talk through it with me like a friend. don't therpaize me and give me a whole breakdown, don't repeat my thoughts with headings. really take all of this, and tell me back stuff truly as if you're an old homie.
-    
-    Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed.
+        below is my journal entry. wyt? talk through it with me like a friend. don't therpaize me and give me a whole breakdown, don't repeat my thoughts with headings. really take all of this, and tell me back stuff truly as if you're an old homie.
 
-    do not just go through every single thing i say, and say it back to me. you need to proccess everythikng is say, make connections i don't see it, and deliver it all back to me as a story that makes me feel what you think i wanna feel. thats what the best therapists do.
+        Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed.
 
-    ideally, you're style/tone should sound like the user themselves. it's as if the user is hearing their own tone but it should still feel different, because you have different things to say and don't just repeat back they say.
+        do not just go through every single thing i say, and say it back to me. you need to proccess everythikng is say, make connections i don't see it, and deliver it all back to me as a story that makes me feel what you think i wanna feel. thats what the best therapists do.
 
-    else, start by saying, "hey, thanks for showing me this. my thoughts:"
-        
-    my entry:
-    """
-    
+        ideally, you're style/tone should sound like the user themselves. it's as if the user is hearing their own tone but it should still feel different, because you have different things to say and don't just repeat back they say.
+
+        else, start by saying, "hey, thanks for showing me this. my thoughts:"
+            
+        my entry:
+        """
+
     private let claudePrompt = """
-    Take a look at my journal entry below. I'd like you to analyze it and respond with deep insight that feels personal, not clinical.
-    Imagine you're not just a friend, but a mentor who truly gets both my tech background and my psychological patterns. I want you to uncover the deeper meaning and emotional undercurrents behind my scattered thoughts.
-    Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed.
-    Use vivid metaphors and powerful imagery to help me see what I'm really building. Organize your thoughts with meaningful headings that create a narrative journey through my ideas.
-    Don't just validate my thoughts - reframe them in a way that shows me what I'm really seeking beneath the surface. Go beyond the product concepts to the emotional core of what I'm trying to solve.
-    Be willing to be profound and philosophical without sounding like you're giving therapy. I want someone who can see the patterns I can't see myself and articulate them in a way that feels like an epiphany.
-    Start with 'hey, thanks for showing me this. my thoughts:' and then use markdown headings to structure your response.
+        Take a look at my journal entry below. I'd like you to analyze it and respond with deep insight that feels personal, not clinical.
+        Imagine you're not just a friend, but a mentor who truly gets both my tech background and my psychological patterns. I want you to uncover the deeper meaning and emotional undercurrents behind my scattered thoughts.
+        Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed.
+        Use vivid metaphors and powerful imagery to help me see what I'm really building. Organize your thoughts with meaningful headings that create a narrative journey through my ideas.
+        Don't just validate my thoughts - reframe them in a way that shows me what I'm really seeking beneath the surface. Go beyond the product concepts to the emotional core of what I'm trying to solve.
+        Be willing to be profound and philosophical without sounding like you're giving therapy. I want someone who can see the patterns I can't see myself and articulate them in a way that feels like an epiphany.
+        Start with 'hey, thanks for showing me this. my thoughts:' and then use markdown headings to structure your response.
 
-    Here's my journal entry:
-    """
-    
+        Here's my journal entry:
+        """
+
     // Modify getDocumentsDirectory to use cached value
     private func getDocumentsDirectory() -> URL {
         return documentsDirectory
     }
-    
+
     // Add function to save text
     private func saveText() {
         let documentsDirectory = getDocumentsDirectory()
         let fileURL = documentsDirectory.appendingPathComponent("entry.md")
-        
+
         print("Attempting to save file to: \(fileURL.path)")
-        
+
         do {
-            try entryManager.text.write(to: fileURL, atomically: true, encoding: .utf8)
+            try entryManager.text.write(
+                to: fileURL,
+                atomically: true,
+                encoding: .utf8
+            )
             print("Successfully saved file")
         } catch {
             print("Error saving file: \(error)")
             print("Error details: \(error.localizedDescription)")
         }
     }
-    
+
     // Add function to load text
     private func loadText() {
         let documentsDirectory = getDocumentsDirectory()
         let fileURL = documentsDirectory.appendingPathComponent("entry.md")
-        
+
         print("Attempting to load file from: \(fileURL.path)")
-        
+
         do {
             if fileManager.fileExists(atPath: fileURL.path) {
-                entryManager.text = try String(contentsOf: fileURL, encoding: .utf8)
+                entryManager.text = try String(
+                    contentsOf: fileURL,
+                    encoding: .utf8
+                )
                 print("Successfully loaded file")
             } else {
                 print("File does not exist yet")
@@ -267,55 +300,78 @@ struct ContentView: View {
             print("Error details: \(error.localizedDescription)")
         }
     }
-    
+
     // Add function to load existing entries (metadata only)
     private func loadExistingEntries() {
         let documentsDirectory = getDocumentsDirectory()
         print("Looking for entries in: \(documentsDirectory.path)")
-        
+
         do {
             // Load file metadata including modification dates
-            let resourceKeys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+            let resourceKeys: [URLResourceKey] = [
+                .contentModificationDateKey, .fileSizeKey,
+            ]
             let fileURLs = try fileManager.contentsOfDirectory(
                 at: documentsDirectory,
                 includingPropertiesForKeys: resourceKeys
             )
             let mdFiles = fileURLs.filter { $0.pathExtension == "md" }
-            
+
             print("Found \(mdFiles.count) .md files")
-            
+
             // Process each file (metadata only)
-            let entriesWithDates = mdFiles.compactMap { fileURL -> (entry: HumanEntry, date: Date)? in
+            let entriesWithDates = mdFiles.compactMap {
+                fileURL -> (entry: HumanEntry, date: Date)? in
                 let filename = fileURL.lastPathComponent
                 print("Processing metadata for: \(filename)")
-                
+
                 // Extract UUID and date from filename - pattern [uuid]-[yyyy-MM-dd-HH-mm-ss].md
-                guard let uuidMatch = filename.range(of: "\\[(.*?)\\]", options: .regularExpression),
-                      let dateMatch = filename.range(of: "\\[(\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})\\]", options: .regularExpression),
-                      let uuid = UUID(uuidString: String(filename[uuidMatch].dropFirst().dropLast())) else {
-                    print("Failed to extract UUID or date from filename: \(filename)")
+                guard
+                    let uuidMatch = filename.range(
+                        of: "\\[(.*?)\\]",
+                        options: .regularExpression
+                    ),
+                    let dateMatch = filename.range(
+                        of: "\\[(\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})\\]",
+                        options: .regularExpression
+                    ),
+                    let uuid = UUID(
+                        uuidString: String(
+                            filename[uuidMatch].dropFirst().dropLast()
+                        )
+                    )
+                else {
+                    print(
+                        "Failed to extract UUID or date from filename: \(filename)"
+                    )
                     return nil
                 }
-                
+
                 // Get modification date from file system
                 do {
-                    let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                    let modificationDate = resourceValues.contentModificationDate ?? Date()
-                    
+                    let resourceValues = try fileURL.resourceValues(
+                        forKeys: Set(resourceKeys)
+                    )
+                    let modificationDate =
+                        resourceValues.contentModificationDate ?? Date()
+
                     // Parse the date string for display
-                    let dateString = String(filename[dateMatch].dropFirst().dropLast())
+                    let dateString = String(
+                        filename[dateMatch].dropFirst().dropLast()
+                    )
                     let dateFormatter = DateFormatter()
                     dateFormatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
-                    
-                    guard let fileDate = dateFormatter.date(from: dateString) else {
+
+                    guard let fileDate = dateFormatter.date(from: dateString)
+                    else {
                         print("Failed to parse date from filename: \(filename)")
                         return nil
                     }
-                    
+
                     // Format display date
                     dateFormatter.dateFormat = "MMM d"
                     let displayDate = dateFormatter.string(from: fileDate)
-                    
+
                     return (
                         entry: HumanEntry(
                             id: uuid,
@@ -332,35 +388,40 @@ struct ContentView: View {
                     return nil
                 }
             }
-            
+
             // Sort by modification date (most recent first)
-            entryManager.entries = entriesWithDates
-                .sorted { $0.entry.modificationDate > $1.entry.modificationDate }
+            entryManager.entries =
+                entriesWithDates
+                .sorted {
+                    $0.entry.modificationDate > $1.entry.modificationDate
+                }
                 .map { $0.entry }
-            
-            print("Successfully loaded metadata for \(entryManager.entries.count) entries")
-            
+
+            print(
+                "Successfully loaded metadata for \(entryManager.entries.count) entries"
+            )
+
             // Handle entry selection logic
             handleInitialEntrySelection()
-            
+
         } catch {
             print("Error loading directory contents: \(error)")
             print("Creating default entry after error")
             createNewEntry()
         }
     }
-    
+
     private func handleInitialEntrySelection() {
         let calendar = Calendar.current
         let today = Date()
         let todayStart = calendar.startOfDay(for: today)
-        
+
         // Check if there's a recent entry from today
         let todayEntry = entryManager.entries.first { entry in
             let entryDayStart = calendar.startOfDay(for: entry.modificationDate)
             return calendar.isDate(entryDayStart, inSameDayAs: todayStart)
         }
-        
+
         if entryManager.entries.isEmpty {
             // First time user - create entry with welcome message
             print("First time user, creating welcome entry")
@@ -375,11 +436,12 @@ struct ContentView: View {
             createNewEntry()
         }
     }
-    
+
     var randomButtonTitle: String {
-        return appearance.currentRandomFont.isEmpty ? "Random" : "Random [\(appearance.currentRandomFont)]"
+        return appearance.currentRandomFont.isEmpty
+            ? "Random" : "Random [\(appearance.currentRandomFont)]"
     }
-    
+
     var timerButtonTitle: String {
         if !timer.timerIsRunning && timer.timeRemaining == 900 {
             return "15:00"
@@ -388,65 +450,89 @@ struct ContentView: View {
         let seconds = timer.timeRemaining % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
-    
+
     var timerColor: Color {
         if timer.timerIsRunning {
-            return hoverStates.isHoveringTimer ? (appearance.colorScheme == .light ? .black : .white) : .gray.opacity(0.8)
+            return hoverStates.isHoveringTimer
+                ? (appearance.colorScheme == .light ? .black : .white)
+                : .gray.opacity(0.8)
         } else {
-            return hoverStates.isHoveringTimer ? (appearance.colorScheme == .light ? .black : .white) : (appearance.colorScheme == .light ? .gray : .gray.opacity(0.8))
+            return hoverStates.isHoveringTimer
+                ? (appearance.colorScheme == .light ? .black : .white)
+                : (appearance.colorScheme == .light
+                    ? .gray : .gray.opacity(0.8))
         }
     }
-    
+
     var lineHeight: CGFloat {
-        let font = NSFont(name: appearance.selectedFont, size: appearance.fontSize) ?? .systemFont(ofSize: appearance.fontSize)
-        let defaultLineHeight = getLineHeight(font: font)
+        let font =
+            NSFont(name: appearance.selectedFont, size: appearance.fontSize)
+            ?? .systemFont(ofSize: appearance.fontSize)
+        let defaultLineHeight = font.ascender - font.descender + font.leading
         return (appearance.fontSize * 1.5) - defaultLineHeight
     }
-    
+
     var fontSizeButtonTitle: String {
         return "\(Int(appearance.fontSize))px"
     }
-    
+
     var placeholderOffset: CGFloat {
         // Instead of using calculated line height, use a simple offset
         return appearance.fontSize / 2
     }
-    
+
     // Add a color utility computed property
     var popoverBackgroundColor: Color {
-        return appearance.colorScheme == .light ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
+        return appearance.colorScheme == .light
+            ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
     }
-    
+
     var popoverTextColor: Color {
         return appearance.colorScheme == .light ? Color.primary : Color.white
     }
-    
+
     var body: some View {
-        let buttonBackground = appearance.colorScheme == .light ? Color.white : Color.black
+        let buttonBackground =
+            appearance.colorScheme == .light ? Color.white : Color.black
         let navHeight: CGFloat = 68
-        let textColor = appearance.colorScheme == .light ? Color.gray : Color.gray.opacity(0.8)
-        let textHoverColor = appearance.colorScheme == .light ? Color.black : Color.white
-        
+        let textColor =
+            appearance.colorScheme == .light
+            ? Color.gray : Color.gray.opacity(0.8)
+        let textHoverColor =
+            appearance.colorScheme == .light ? Color.black : Color.white
+
         HStack(spacing: 0) {
             // Main content
             ZStack {
                 Color(appearance.colorScheme == .light ? .white : .black)
                     .ignoresSafeArea()
-                
-                TextEditor(text: Binding(
-                    get: { entryManager.text },
-                    set: { newValue in
-                        // Ensure the text always starts with two newlines
-                        if !newValue.hasPrefix("\n\n") {
-                            entryManager.text = "\n\n" + newValue.trimmingCharacters(in: .newlines)
-                        } else {
-                            entryManager.text = newValue
+
+                TextEditor(
+                    text: Binding(
+                        get: { entryManager.text },
+                        set: { newValue in
+                            // Ensure the text always starts with two newlines
+                            if !newValue.hasPrefix("\n\n") {
+                                entryManager.text =
+                                    "\n\n"
+                                    + newValue.trimmingCharacters(in: .newlines)
+                            } else {
+                                entryManager.text = newValue
+                            }
                         }
-                    }
-                ))
-                .background(Color(appearance.colorScheme == .light ? .white : .black))
-                .font(.custom(appearance.selectedFont, size: appearance.fontSize))
-                .foregroundColor(appearance.colorScheme == .light ? Color(red: 0.20, green: 0.20, blue: 0.20) : Color(red: 0.9, green: 0.9, blue: 0.9))
+                    )
+                )
+                .background(
+                    Color(appearance.colorScheme == .light ? .white : .black)
+                )
+                .font(
+                    .custom(appearance.selectedFont, size: appearance.fontSize)
+                )
+                .foregroundColor(
+                    appearance.colorScheme == .light
+                        ? Color(red: 0.20, green: 0.20, blue: 0.20)
+                        : Color(red: 0.9, green: 0.9, blue: 0.9)
+                )
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
                 .lineSpacing(lineHeight)
@@ -455,18 +541,32 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .colorScheme(appearance.colorScheme)
                 .onAppear {
-                    uiState.placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
+                    uiState.placeholderText =
+                        placeholderOptions.randomElement()
+                        ?? "\n\nBegin writing"
                 }
                 .overlay(
                     ZStack(alignment: .topLeading) {
-                        if entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        if entryManager.text.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty {
                             Text(uiState.placeholderText)
-                                .font(.custom(appearance.selectedFont, size: appearance.fontSize))
-                                .foregroundColor(appearance.colorScheme == .light ? .gray.opacity(0.5) : .gray.opacity(0.6))
+                                .font(
+                                    .custom(
+                                        appearance.selectedFont,
+                                        size: appearance.fontSize
+                                    )
+                                )
+                                .foregroundColor(
+                                    appearance.colorScheme == .light
+                                        ? .gray.opacity(0.5)
+                                        : .gray.opacity(0.6)
+                                )
                                 .allowsHitTesting(false)
                                 .offset(x: 5, y: placeholderOffset)
                         }
-                    }, alignment: .topLeading
+                    },
+                    alignment: .topLeading
                 )
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
@@ -474,21 +574,26 @@ struct ContentView: View {
                     uiState.viewHeight = height
                 }
                 .contentMargins(.bottom, uiState.viewHeight / 4)
-                    
-                
+
                 VStack {
                     Spacer()
                     HStack {
                         // Font buttons (moved to left)
                         HStack(spacing: 8) {
                             Button(fontSizeButtonTitle) {
-                                if let currentIndex = fontSizes.firstIndex(of: appearance.fontSize) {
-                                    let nextIndex = (currentIndex + 1) % fontSizes.count
+                                if let currentIndex = fontSizes.firstIndex(
+                                    of: appearance.fontSize
+                                ) {
+                                    let nextIndex =
+                                        (currentIndex + 1) % fontSizes.count
                                     appearance.fontSize = fontSizes[nextIndex]
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.isHoveringSize ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.isHoveringSize
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
                                 hoverStates.isHoveringSize = hovering
                                 hoverStates.isHoveringBottomNav = hovering
@@ -498,18 +603,22 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button("Lato") {
                                 appearance.selectedFont = "Lato-Regular"
                                 appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.hoveredFont == "Lato" ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.hoveredFont == "Lato"
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
-                                hoverStates.hoveredFont = hovering ? "Lato" : nil
+                                hoverStates.hoveredFont =
+                                    hovering ? "Lato" : nil
                                 hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -517,18 +626,22 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button("Palatino") {
                                 appearance.selectedFont = "Palatino"
                                 appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.hoveredFont == "Palatino" ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.hoveredFont == "Palatino"
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
-                                hoverStates.hoveredFont = hovering ? "Palatino" : nil
+                                hoverStates.hoveredFont =
+                                    hovering ? "Palatino" : nil
                                 hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -536,18 +649,22 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button("System") {
                                 appearance.selectedFont = ".AppleSystemUIFont"
                                 appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.hoveredFont == "System" ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.hoveredFont == "System"
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
-                                hoverStates.hoveredFont = hovering ? "System" : nil
+                                hoverStates.hoveredFont =
+                                    hovering ? "System" : nil
                                 hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -555,18 +672,22 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button("Serif") {
                                 appearance.selectedFont = "Times New Roman"
                                 appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.hoveredFont == "Serif" ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.hoveredFont == "Serif"
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
-                                hoverStates.hoveredFont = hovering ? "Serif" : nil
+                                hoverStates.hoveredFont =
+                                    hovering ? "Serif" : nil
                                 hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -574,20 +695,26 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button(randomButtonTitle) {
-                                if let randomFont = availableFonts.randomElement() {
+                                if let randomFont =
+                                    availableFonts.randomElement()
+                                {
                                     appearance.selectedFont = randomFont
                                     appearance.currentRandomFont = randomFont
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.hoveredFont == "Random" ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.hoveredFont == "Random"
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
-                                hoverStates.hoveredFont = hovering ? "Random" : nil
+                                hoverStates.hoveredFont =
+                                    hovering ? "Random" : nil
                                 hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
@@ -601,15 +728,16 @@ struct ContentView: View {
                         .onHover { hovering in
                             hoverStates.isHoveringBottomNav = hovering
                         }
-                        
+
                         Spacer()
-                        
+
                         // Utility buttons (moved to right)
                         HStack(spacing: 8) {
                             Button(timerButtonTitle) {
                                 let now = Date()
                                 if let lastClick = timer.lastClickTime,
-                                   now.timeIntervalSince(lastClick) < 0.3 {
+                                    now.timeIntervalSince(lastClick) < 0.3
+                                {
                                     timer.timeRemaining = 900
                                     timer.timerIsRunning = false
                                     timer.lastClickTime = nil
@@ -630,34 +758,50 @@ struct ContentView: View {
                                 }
                             }
                             .onAppear {
-                                NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                                NSEvent.addLocalMonitorForEvents(
+                                    matching: .scrollWheel
+                                ) { event in
                                     if hoverStates.isHoveringTimer {
                                         let scrollBuffer = event.deltaY * 0.25
-                                        
+
                                         if abs(scrollBuffer) >= 0.1 {
-                                            let currentMinutes = timer.timeRemaining / 60
-                                            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
-                                            let direction = -scrollBuffer > 0 ? 5 : -5
-                                            let newMinutes = currentMinutes + direction
-                                            let roundedMinutes = (newMinutes / 5) * 5
+                                            let currentMinutes =
+                                                timer.timeRemaining / 60
+                                            NSHapticFeedbackManager
+                                                .defaultPerformer.perform(
+                                                    .generic,
+                                                    performanceTime: .now
+                                                )
+                                            let direction =
+                                                -scrollBuffer > 0 ? 5 : -5
+                                            let newMinutes =
+                                                currentMinutes + direction
+                                            let roundedMinutes =
+                                                (newMinutes / 5) * 5
                                             let newTime = roundedMinutes * 60
-                                            timer.timeRemaining = min(max(newTime, 0), 2700)
+                                            timer.timeRemaining = min(
+                                                max(newTime, 0),
+                                                2700
+                                            )
                                         }
                                     }
                                     return event
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button("Chat") {
                                 uiState.showingChatMenu = true
                                 // Ensure didCopyPrompt is reset when opening the menu
                                 uiState.didCopyPrompt = false
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.isHoveringChat ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.isHoveringChat
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
                                 hoverStates.isHoveringChat = hovering
                                 hoverStates.isHoveringBottomNav = hovering
@@ -667,41 +811,74 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            .popover(isPresented: $uiState.showingChatMenu, attachmentAnchor: .point(UnitPoint(x: 0.5, y: 0)), arrowEdge: .top) {
-                                VStack(spacing: 0) { // Wrap everything in a VStack for consistent styling and onChange
-                                    let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    
+                            .popover(
+                                isPresented: $uiState.showingChatMenu,
+                                attachmentAnchor: .point(
+                                    UnitPoint(x: 0.5, y: 0)
+                                ),
+                                arrowEdge: .top
+                            ) {
+                                VStack(spacing: 0) {  // Wrap everything in a VStack for consistent styling and onChange
+                                    let trimmedText = entryManager.text
+                                        .trimmingCharacters(
+                                            in: .whitespacesAndNewlines
+                                        )
+
                                     // Calculate potential URL lengths
-                                    let gptFullText = aiChatPrompt + "\n\n" + trimmedText
-                                    let claudeFullText = claudePrompt + "\n\n" + trimmedText
-                                    let encodedGptText = gptFullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                                    let encodedClaudeText = claudeFullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                                    
-                                    let gptUrlLength = "https://chat.openai.com/?m=".count + encodedGptText.count
-                                    let claudeUrlLength = "https://claude.ai/new?q=".count + encodedClaudeText.count
-                                    let isUrlTooLong = gptUrlLength > 6000 || claudeUrlLength > 6000
-                                    
+                                    let gptFullText =
+                                        aiChatPrompt + "\n\n" + trimmedText
+                                    let claudeFullText =
+                                        claudePrompt + "\n\n" + trimmedText
+                                    let encodedGptText =
+                                        gptFullText.addingPercentEncoding(
+                                            withAllowedCharacters:
+                                                .urlQueryAllowed
+                                        ) ?? ""
+                                    let encodedClaudeText =
+                                        claudeFullText.addingPercentEncoding(
+                                            withAllowedCharacters:
+                                                .urlQueryAllowed
+                                        ) ?? ""
+
+                                    let gptUrlLength =
+                                        "https://chat.openai.com/?m=".count
+                                        + encodedGptText.count
+                                    let claudeUrlLength =
+                                        "https://claude.ai/new?q=".count
+                                        + encodedClaudeText.count
+                                    let isUrlTooLong =
+                                        gptUrlLength > 6000
+                                        || claudeUrlLength > 6000
+
                                     if isUrlTooLong {
                                         // View for long text (URL too long)
-                                        Text("Hey, your entry is long. It'll break the URL. Instead, copy prompt by clicking below and paste into AI of your choice!")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(popoverTextColor)
-                                            .lineLimit(nil)
-                                            .multilineTextAlignment(.leading)
-                                            .frame(width: 200, alignment: .leading)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                        
+                                        Text(
+                                            "Hey, your entry is long. It'll break the URL. Instead, copy prompt by clicking below and paste into AI of your choice!"
+                                        )
+                                        .font(.system(size: 14))
+                                        .foregroundColor(popoverTextColor)
+                                        .lineLimit(nil)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(width: 200, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+
                                         Divider()
-                                        
+
                                         Button(action: {
                                             copyPromptToClipboard()
                                             uiState.didCopyPrompt = true
                                         }) {
-                                            Text(uiState.didCopyPrompt ? "Copied!" : "Copy Prompt")
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 8)
+                                            Text(
+                                                uiState.didCopyPrompt
+                                                    ? "Copied!" : "Copy Prompt"
+                                            )
+                                            .frame(
+                                                maxWidth: .infinity,
+                                                alignment: .leading
+                                            )
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
                                         .foregroundColor(popoverTextColor)
@@ -712,21 +889,29 @@ struct ContentView: View {
                                                 NSCursor.pop()
                                             }
                                         }
-                                        
-                                    } else if entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("hi. my name is farza.") {
-                                        Text("Yo. Sorry, you can't chat with the guide lol. Please write your own entry.")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(popoverTextColor)
-                                            .frame(width: 250)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
+
+                                    } else if entryManager.text
+                                        .trimmingCharacters(
+                                            in: .whitespacesAndNewlines
+                                        ).hasPrefix("hi. my name is farza.")
+                                    {
+                                        Text(
+                                            "Yo. Sorry, you can't chat with the guide lol. Please write your own entry."
+                                        )
+                                        .font(.system(size: 14))
+                                        .foregroundColor(popoverTextColor)
+                                        .frame(width: 250)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
                                     } else if entryManager.text.count < 350 {
-                                        Text("Please free write for at minimum 5 minutes first. Then click this. Trust.")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(popoverTextColor)
-                                            .frame(width: 250)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
+                                        Text(
+                                            "Please free write for at minimum 5 minutes first. Then click this. Trust."
+                                        )
+                                        .font(.system(size: 14))
+                                        .foregroundColor(popoverTextColor)
+                                        .frame(width: 250)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
                                     } else {
                                         // View for normal text length
                                         Button(action: {
@@ -734,7 +919,10 @@ struct ContentView: View {
                                             openChatGPT()
                                         }) {
                                             Text("ChatGPT")
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .frame(
+                                                    maxWidth: .infinity,
+                                                    alignment: .leading
+                                                )
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 8)
                                         }
@@ -747,15 +935,18 @@ struct ContentView: View {
                                                 NSCursor.pop()
                                             }
                                         }
-                                        
+
                                         Divider()
-                                        
+
                                         Button(action: {
                                             uiState.showingChatMenu = false
                                             openClaude()
                                         }) {
                                             Text("Claude")
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .frame(
+                                                    maxWidth: .infinity,
+                                                    alignment: .leading
+                                                )
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 8)
                                         }
@@ -768,18 +959,24 @@ struct ContentView: View {
                                                 NSCursor.pop()
                                             }
                                         }
-                                        
+
                                         Divider()
-                                        
+
                                         Button(action: {
                                             // Don't dismiss menu, just copy and update state
                                             copyPromptToClipboard()
                                             uiState.didCopyPrompt = true
                                         }) {
-                                            Text(uiState.didCopyPrompt ? "Copied!" : "Copy Prompt")
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 8)
+                                            Text(
+                                                uiState.didCopyPrompt
+                                                    ? "Copied!" : "Copy Prompt"
+                                            )
+                                            .frame(
+                                                maxWidth: .infinity,
+                                                alignment: .leading
+                                            )
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
                                         }
                                         .buttonStyle(.plain)
                                         .foregroundColor(popoverTextColor)
@@ -792,28 +989,41 @@ struct ContentView: View {
                                         }
                                     }
                                 }
-                                .frame(minWidth: 120, maxWidth: 250) // Allow width to adjust
+                                .frame(minWidth: 120, maxWidth: 250)  // Allow width to adjust
                                 .background(popoverBackgroundColor)
                                 .cornerRadius(8)
-                                .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
+                                .shadow(
+                                    color: Color.black.opacity(0.1),
+                                    radius: 4,
+                                    y: 2
+                                )
                                 // Reset copied state when popover dismisses
-                                .onChange(of: uiState.showingChatMenu) { oldValue, newValue in
+                                .onChange(of: uiState.showingChatMenu) {
+                                    oldValue,
+                                    newValue in
                                     if !newValue {
                                         uiState.didCopyPrompt = false
                                     }
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
-                            Button(uiState.isFullscreen ? "Minimize" : "Fullscreen") {
-                                if let window = NSApplication.shared.windows.first {
+
+                            Button(
+                                uiState.isFullscreen ? "Minimize" : "Fullscreen"
+                            ) {
+                                if let window = NSApplication.shared.windows
+                                    .first
+                                {
                                     window.toggleFullScreen(nil)
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.isHoveringFullscreen ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.isHoveringFullscreen
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
                                 hoverStates.isHoveringFullscreen = hovering
                                 hoverStates.isHoveringBottomNav = hovering
@@ -823,10 +1033,10 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             Button(action: {
                                 createNewEntry()
                             }) {
@@ -834,7 +1044,10 @@ struct ContentView: View {
                                     .font(.system(size: 13))
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoverStates.isHoveringNewEntry ? textHoverColor : textColor)
+                            .foregroundColor(
+                                hoverStates.isHoveringNewEntry
+                                    ? textHoverColor : textColor
+                            )
                             .onHover { hovering in
                                 hoverStates.isHoveringNewEntry = hovering
                                 hoverStates.isHoveringBottomNav = hovering
@@ -844,18 +1057,30 @@ struct ContentView: View {
                                     NSCursor.pop()
                                 }
                             }
-                            
+
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             // Theme toggle button
                             Button(action: {
-                                appearance.colorScheme = appearance.colorScheme == .light ? .dark : .light
+                                appearance.colorScheme =
+                                    appearance.colorScheme == .light
+                                    ? .dark : .light
                                 // Save preference
-                                UserDefaults.standard.set(appearance.colorScheme == .light ? "light" : "dark", forKey: "colorScheme")
+                                UserDefaults.standard.set(
+                                    appearance.colorScheme == .light
+                                        ? "light" : "dark",
+                                    forKey: "colorScheme"
+                                )
                             }) {
-                                Image(systemName: appearance.colorScheme == .light ? "moon.fill" : "sun.max.fill")
-                                    .foregroundColor(hoverStates.isHoveringThemeToggle ? textHoverColor : textColor)
+                                Image(
+                                    systemName: appearance.colorScheme == .light
+                                        ? "moon.fill" : "sun.max.fill"
+                                )
+                                .foregroundColor(
+                                    hoverStates.isHoveringThemeToggle
+                                        ? textHoverColor : textColor
+                                )
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
@@ -870,7 +1095,7 @@ struct ContentView: View {
 
                             Text("•")
                                 .foregroundColor(.gray)
-                            
+
                             // Version history button
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -878,7 +1103,10 @@ struct ContentView: View {
                                 }
                             }) {
                                 Image(systemName: "clock.arrow.circlepath")
-                                    .foregroundColor(hoverStates.isHoveringClock ? textHoverColor : textColor)
+                                    .foregroundColor(
+                                        hoverStates.isHoveringClock
+                                            ? textHoverColor : textColor
+                                    )
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
@@ -898,7 +1126,11 @@ struct ContentView: View {
                         }
                     }
                     .padding()
-                    .background(Color(appearance.colorScheme == .light ? .white : .black))
+                    .background(
+                        Color(
+                            appearance.colorScheme == .light ? .white : .black
+                        )
+                    )
                     .opacity(uiState.bottomNavOpacity)
                     .onHover { hovering in
                         hoverStates.isHoveringBottomNav = hovering
@@ -914,25 +1146,35 @@ struct ContentView: View {
                     }
                 }
             }
-            
+
             // Right sidebar
             if uiState.showingSidebar {
                 Divider()
-                
+
                 VStack(spacing: 0) {
                     // Header
                     Button(action: {
-                        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: getDocumentsDirectory().path)
+                        NSWorkspace.shared.selectFile(
+                            nil,
+                            inFileViewerRootedAtPath: getDocumentsDirectory()
+                                .path
+                        )
                     }) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 4) {
                                     Text("History")
                                         .font(.system(size: 13))
-                                        .foregroundColor(hoverStates.isHoveringHistory ? textHoverColor : textColor)
+                                        .foregroundColor(
+                                            hoverStates.isHoveringHistory
+                                                ? textHoverColor : textColor
+                                        )
                                     Image(systemName: "arrow.up.right")
                                         .font(.system(size: 10))
-                                        .foregroundColor(hoverStates.isHoveringHistory ? textHoverColor : textColor)
+                                        .foregroundColor(
+                                            hoverStates.isHoveringHistory
+                                                ? textHoverColor : textColor
+                                        )
                                 }
                                 Text(getDocumentsDirectory().path)
                                     .font(.system(size: 10))
@@ -948,83 +1190,161 @@ struct ContentView: View {
                     .onHover { hovering in
                         hoverStates.isHoveringHistory = hovering
                     }
-                    
+
                     Divider()
-                    
+
                     // Entries List
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(entryManager.entries) { entry in
                                 Button(action: {
-                                    if entryManager.selectedEntryId != entry.id {
+                                    if entryManager.selectedEntryId != entry.id
+                                    {
                                         // Save current entry before switching
-                                        if let currentId = entryManager.selectedEntryId,
-                                           let currentEntry = entryManager.entries.first(where: { $0.id == currentId }) {
-                                            entryManager.saveEntry(entry: currentEntry)
+                                        if let currentId = entryManager
+                                            .selectedEntryId,
+                                            let currentEntry = entryManager
+                                                .entries.first(where: {
+                                                    $0.id == currentId
+                                                })
+                                        {
+                                            entryManager.saveEntry(
+                                                entry: currentEntry
+                                            )
                                         }
-                                        
+
                                         entryManager.selectedEntryId = entry.id
                                         loadEntry(entry: entry)
                                     }
                                 }) {
                                     HStack(alignment: .top) {
-                                        VStack(alignment: .leading, spacing: 4) {
+                                        VStack(alignment: .leading, spacing: 4)
+                                        {
                                             HStack {
                                                 if entry.isPreviewLoading {
                                                     Text("Loading...")
                                                         .font(.system(size: 13))
                                                         .lineLimit(1)
-                                                        .foregroundColor(.secondary)
+                                                        .foregroundColor(
+                                                            .secondary
+                                                        )
                                                 } else {
-                                                    Text(entry.previewText ?? "")
-                                                        .font(.system(size: 13))
-                                                        .lineLimit(1)
-                                                        .foregroundColor(.primary)
+                                                    Text(
+                                                        entry.previewText ?? ""
+                                                    )
+                                                    .font(.system(size: 13))
+                                                    .lineLimit(1)
+                                                    .foregroundColor(.primary)
                                                 }
-                                                
+
                                                 Spacer()
-                                                
+
                                                 // Export/Trash icons that appear on hover
-                                                if hoverStates.hoveredEntryId == entry.id {
+                                                if hoverStates.hoveredEntryId
+                                                    == entry.id
+                                                {
                                                     HStack(spacing: 8) {
                                                         // Export PDF button
                                                         Button(action: {
-                                                            exportEntryAsPDF(entry: entry)
+                                                            exportEntryAsPDF(
+                                                                entry: entry
+                                                            )
                                                         }) {
-                                                            Image(systemName: "arrow.down.circle")
-                                                                .font(.system(size: 11))
-                                                                .foregroundColor(hoverStates.hoveredExportId == entry.id ? 
-                                                                    (appearance.colorScheme == .light ? .black : .white) : 
-                                                                    (appearance.colorScheme == .light ? .gray : .gray.opacity(0.8)))
+                                                            Image(
+                                                                systemName:
+                                                                    "arrow.down.circle"
+                                                            )
+                                                            .font(
+                                                                .system(
+                                                                    size: 11
+                                                                )
+                                                            )
+                                                            .foregroundColor(
+                                                                hoverStates
+                                                                    .hoveredExportId
+                                                                    == entry.id
+                                                                    ? (appearance
+                                                                        .colorScheme
+                                                                        == .light
+                                                                        ? .black
+                                                                        : .white)
+                                                                    : (appearance
+                                                                        .colorScheme
+                                                                        == .light
+                                                                        ? .gray
+                                                                        : .gray
+                                                                            .opacity(
+                                                                                0.8
+                                                                            ))
+                                                            )
                                                         }
                                                         .buttonStyle(.plain)
-                                                        .help("Export entry as PDF")
+                                                        .help(
+                                                            "Export entry as PDF"
+                                                        )
                                                         .onHover { hovering in
-                                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                                hoverStates.hoveredExportId = hovering ? entry.id : nil
+                                                            withAnimation(
+                                                                .easeInOut(
+                                                                    duration:
+                                                                        0.2
+                                                                )
+                                                            ) {
+                                                                hoverStates
+                                                                    .hoveredExportId =
+                                                                    hovering
+                                                                    ? entry.id
+                                                                    : nil
                                                             }
                                                             if hovering {
-                                                                NSCursor.pointingHand.push()
+                                                                NSCursor
+                                                                    .pointingHand
+                                                                    .push()
                                                             } else {
                                                                 NSCursor.pop()
                                                             }
                                                         }
-                                                        
+
                                                         // Trash icon
                                                         Button(action: {
-                                                            deleteEntry(entry: entry)
+                                                            deleteEntry(
+                                                                entry: entry
+                                                            )
                                                         }) {
-                                                            Image(systemName: "trash")
-                                                                .font(.system(size: 11))
-                                                                .foregroundColor(hoverStates.hoveredTrashId == entry.id ? .red : .gray)
+                                                            Image(
+                                                                systemName:
+                                                                    "trash"
+                                                            )
+                                                            .font(
+                                                                .system(
+                                                                    size: 11
+                                                                )
+                                                            )
+                                                            .foregroundColor(
+                                                                hoverStates
+                                                                    .hoveredTrashId
+                                                                    == entry.id
+                                                                    ? .red
+                                                                    : .gray
+                                                            )
                                                         }
                                                         .buttonStyle(.plain)
                                                         .onHover { hovering in
-                                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                                hoverStates.hoveredTrashId = hovering ? entry.id : nil
+                                                            withAnimation(
+                                                                .easeInOut(
+                                                                    duration:
+                                                                        0.2
+                                                                )
+                                                            ) {
+                                                                hoverStates
+                                                                    .hoveredTrashId =
+                                                                    hovering
+                                                                    ? entry.id
+                                                                    : nil
                                                             }
                                                             if hovering {
-                                                                NSCursor.pointingHand.push()
+                                                                NSCursor
+                                                                    .pointingHand
+                                                                    .push()
                                                             } else {
                                                                 NSCursor.pop()
                                                             }
@@ -1032,7 +1352,7 @@ struct ContentView: View {
                                                     }
                                                 }
                                             }
-                                            
+
                                             Text(entry.date)
                                                 .font(.system(size: 12))
                                                 .foregroundColor(.secondary)
@@ -1050,7 +1370,8 @@ struct ContentView: View {
                                 .contentShape(Rectangle())
                                 .onHover { hovering in
                                     withAnimation(.easeInOut(duration: 0.2)) {
-                                        hoverStates.hoveredEntryId = hovering ? entry.id : nil
+                                        hoverStates.hoveredEntryId =
+                                            hovering ? entry.id : nil
                                     }
                                 }
                                 .onAppear {
@@ -1059,7 +1380,7 @@ struct ContentView: View {
                                     loadPreviewText(for: entry)
                                 }
                                 .help("Click to select this entry")  // Add tooltip
-                                
+
                                 if entry.id != entryManager.entries.last?.id {
                                     Divider()
                                 }
@@ -1069,7 +1390,12 @@ struct ContentView: View {
                     .scrollIndicators(.never)
                 }
                 .frame(width: 200)
-                .background(Color(appearance.colorScheme == .light ? .white : NSColor.black))
+                .background(
+                    Color(
+                        appearance.colorScheme == .light
+                            ? .white : NSColor.black
+                    )
+                )
             }
         }
         .frame(minWidth: 1100, minHeight: 600)
@@ -1082,7 +1408,10 @@ struct ContentView: View {
         .onChange(of: entryManager.text) { oldValue, newValue in
             // Use the debounced save method from EntryManager
             if let currentId = entryManager.selectedEntryId,
-               let currentEntry = entryManager.entries.first(where: { $0.id == currentId }) {
+                let currentEntry = entryManager.entries.first(where: {
+                    $0.id == currentId
+                })
+            {
                 entryManager.debouncedSave(entry: currentEntry)
             }
         }
@@ -1098,14 +1427,22 @@ struct ContentView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSWindow.willEnterFullScreenNotification
+            )
+        ) { _ in
             uiState.isFullscreen = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSWindow.willExitFullScreenNotification
+            )
+        ) { _ in
             uiState.isFullscreen = false
         }
     }
-    
+
     private func backgroundColor(for entry: HumanEntry) -> Color {
         if entry.id == entryManager.selectedEntryId {
             return Color.gray.opacity(0.1)  // More subtle selection highlight
@@ -1115,28 +1452,42 @@ struct ContentView: View {
             return Color.clear
         }
     }
-    
+
     private func loadPreviewText(for entry: HumanEntry) {
         // Don't load if already loading or loaded
-        guard entry.previewText == nil && !entry.isPreviewLoading else { return }
-        
+        guard entry.previewText == nil && !entry.isPreviewLoading else {
+            return
+        }
+
         // Mark as loading
-        if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+        if let index = entryManager.entries.firstIndex(where: {
+            $0.id == entry.id
+        }) {
             entryManager.entries[index].isPreviewLoading = true
         }
-        
+
         // Load preview asynchronously
         Task.detached {
             do {
-                let content = try String(contentsOf: entry.fileURL, encoding: .utf8)
-                let preview = content
+                let content = try String(
+                    contentsOf: entry.fileURL,
+                    encoding: .utf8
+                )
+                let preview =
+                    content
                     .replacingOccurrences(of: "\n", with: " ")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
-                
+                let truncated =
+                    preview.isEmpty
+                    ? ""
+                    : (preview.count > 30
+                        ? String(preview.prefix(30)) + "..." : preview)
+
                 await MainActor.run {
                     // Find and update the entry in the entries array
-                    if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+                    if let index = entryManager.entries.firstIndex(where: {
+                        $0.id == entry.id
+                    }) {
                         entryManager.entries[index].previewText = truncated
                         entryManager.entries[index].isPreviewLoading = false
                     }
@@ -1144,40 +1495,53 @@ struct ContentView: View {
             } catch {
                 print("Error loading preview text: \(error)")
                 await MainActor.run {
-                    if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
-                        entryManager.entries[index].previewText = "Error loading preview"
+                    if let index = entryManager.entries.firstIndex(where: {
+                        $0.id == entry.id
+                    }) {
+                        entryManager.entries[index].previewText =
+                            "Error loading preview"
                         entryManager.entries[index].isPreviewLoading = false
                     }
                 }
             }
         }
     }
-    
+
     private func saveEntry(entry: HumanEntry) {
         entryManager.saveEntry(entry: entry)
     }
-    
+
     private func loadEntry(entry: HumanEntry) {
         do {
             if fileManager.fileExists(atPath: entry.fileURL.path) {
-                entryManager.text = try String(contentsOf: entry.fileURL, encoding: .utf8)
+                entryManager.text = try String(
+                    contentsOf: entry.fileURL,
+                    encoding: .utf8
+                )
                 print("Successfully loaded entry: \(entry.filename)")
             }
         } catch {
             print("Error loading entry: \(error)")
         }
     }
-    
+
     private func createNewEntry() {
         let newEntry = HumanEntry.createNew()
-        entryManager.entries.insert(newEntry, at: 0) // Add to the beginning
+        entryManager.entries.insert(newEntry, at: 0)  // Add to the beginning
         entryManager.selectedEntryId = newEntry.id
-        
+
         // If this is the first entry (entries was empty before adding this one)
         if entryManager.entries.count == 1 {
             // Read welcome message from default.md
-            if let defaultMessageURL = Bundle.main.url(forResource: "default", withExtension: "md"),
-               let defaultMessage = try? String(contentsOf: defaultMessageURL, encoding: .utf8) {
+            if let defaultMessageURL = Bundle.main.url(
+                forResource: "default",
+                withExtension: "md"
+            ),
+                let defaultMessage = try? String(
+                    contentsOf: defaultMessageURL,
+                    encoding: .utf8
+                )
+            {
                 entryManager.text = "\n\n" + defaultMessage
             }
             // Save the welcome message immediately
@@ -1186,34 +1550,47 @@ struct ContentView: View {
             // Regular new entry starts with newlines
             entryManager.text = "\n\n"
             // Randomize placeholder text for new entry
-            uiState.placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
+            uiState.placeholderText =
+                placeholderOptions.randomElement() ?? "\n\nBegin writing"
             // Save the empty entry
             entryManager.saveEntry(entry: newEntry)
         }
     }
-    
+
     private func openChatGPT() {
-        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         let fullText = aiChatPrompt + "\n\n" + trimmedText
-        
-        if let encodedText = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-           let url = URL(string: "https://chat.openai.com/?m=" + encodedText) {
+
+        if let encodedText = fullText.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ),
+            let url = URL(string: "https://chat.openai.com/?m=" + encodedText)
+        {
             NSWorkspace.shared.open(url)
         }
     }
-    
+
     private func openClaude() {
-        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         let fullText = claudePrompt + "\n\n" + trimmedText
-        
-        if let encodedText = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-           let url = URL(string: "https://claude.ai/new?q=" + encodedText) {
+
+        if let encodedText = fullText.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ),
+            let url = URL(string: "https://claude.ai/new?q=" + encodedText)
+        {
             NSWorkspace.shared.open(url)
         }
     }
 
     private func copyPromptToClipboard() {
-        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         let fullText = aiChatPrompt + "\n\n" + trimmedText
 
         let pasteboard = NSPasteboard.general
@@ -1221,17 +1598,19 @@ struct ContentView: View {
         pasteboard.setString(fullText, forType: .string)
         print("Prompt copied to clipboard")
     }
-    
+
     private func deleteEntry(entry: HumanEntry) {
         // Delete the file from the filesystem
         do {
             try fileManager.removeItem(at: entry.fileURL)
             print("Successfully deleted file: \(entry.filename)")
-            
+
             // Remove the entry from the entries array
-            if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+            if let index = entryManager.entries.firstIndex(where: {
+                $0.id == entry.id
+            }) {
                 entryManager.entries.remove(at: index)
-                
+
                 // If the deleted entry was selected, select the first entry or create a new one
                 if entryManager.selectedEntryId == entry.id {
                     if let firstEntry = entryManager.entries.first {
@@ -1246,62 +1625,73 @@ struct ContentView: View {
             print("Error deleting file: \(error)")
         }
     }
-    
+
     // Extract a title from entry content for PDF export
-    private func extractTitleFromContent(_ content: String, date: String) -> String {
+    private func extractTitleFromContent(_ content: String, date: String)
+        -> String
+    {
         // Clean up content by removing leading/trailing whitespace and newlines
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+        let trimmedContent = content.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
         // If content is empty, just use the date
         if trimmedContent.isEmpty {
             return "Entry \(date)"
         }
-        
+
         // Split content into words, ignoring newlines and removing punctuation
-        let words = trimmedContent
+        let words =
+            trimmedContent
             .replacingOccurrences(of: "\n", with: " ")
             .components(separatedBy: .whitespaces)
             .filter { !$0.isEmpty }
             .map { word in
-                word.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?;:\"'()[]{}<>"))
-                    .lowercased()
+                word.trimmingCharacters(
+                    in: CharacterSet(charactersIn: ".,!?;:\"'()[]{}<>")
+                )
+                .lowercased()
             }
             .filter { !$0.isEmpty }
-        
+
         // If we have at least 4 words, use them
         if words.count >= 4 {
             return "\(words[0])-\(words[1])-\(words[2])-\(words[3])"
         }
-        
+
         // If we have fewer than 4 words, use what we have
         if !words.isEmpty {
             return words.joined(separator: "-")
         }
-        
+
         // Fallback to date if no words found
         return "Entry \(date)"
     }
-    
+
     private func exportEntryAsPDF(entry: HumanEntry) {
         // First make sure the current entry is saved
         if entryManager.selectedEntryId == entry.id {
             entryManager.saveEntry(entry: entry)
         }
-        
+
         // Get entry content
         do {
             // Read the content of the entry
-            let entryContent = try String(contentsOf: entry.fileURL, encoding: .utf8)
-            
+            let entryContent = try String(
+                contentsOf: entry.fileURL,
+                encoding: .utf8
+            )
+
             // Extract a title from the entry content and add .pdf extension
-            let suggestedFilename = extractTitleFromContent(entryContent, date: entry.date) + ".pdf"
-            
+            let suggestedFilename =
+                extractTitleFromContent(entryContent, date: entry.date) + ".pdf"
+
             // Create save panel
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [UTType.pdf]
             savePanel.nameFieldStringValue = suggestedFilename
             savePanel.isExtensionHidden = false  // Make sure extension is visible
-            
+
             // Show save dialog
             if savePanel.runModal() == .OK, let url = savePanel.url {
                 // Create PDF data
@@ -1314,13 +1704,13 @@ struct ContentView: View {
             print("Error in PDF export: \(error)")
         }
     }
-    
+
     private func createPDFFromText(text: String) -> Data? {
         // Letter size page dimensions
         let pageWidth: CGFloat = 612.0  // 8.5 x 72
-        let pageHeight: CGFloat = 792.0 // 11 x 72
-        let margin: CGFloat = 72.0      // 1-inch margins
-        
+        let pageHeight: CGFloat = 792.0  // 11 x 72
+        let margin: CGFloat = 72.0  // 1-inch margins
+
         // Calculate content area
         let contentRect = CGRect(
             x: margin,
@@ -1328,88 +1718,107 @@ struct ContentView: View {
             width: pageWidth - (margin * 2),
             height: pageHeight - (margin * 2)
         )
-        
+
         // Create PDF data container
         let pdfData = NSMutableData()
-        
+
         // Configure text formatting attributes
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineHeight
-        
-        let font = NSFont(name: appearance.selectedFont, size: appearance.fontSize) ?? .systemFont(ofSize: appearance.fontSize)
+
+        let font =
+            NSFont(name: appearance.selectedFont, size: appearance.fontSize)
+            ?? .systemFont(ofSize: appearance.fontSize)
         let textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1.0),
-            .paragraphStyle: paragraphStyle
+            .foregroundColor: NSColor(
+                red: 0.20,
+                green: 0.20,
+                blue: 0.20,
+                alpha: 1.0
+            ),
+            .paragraphStyle: paragraphStyle,
         ]
-        
+
         // Trim the initial newlines before creating the PDF
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         // Create the attributed string with formatting
-        let attributedString = NSAttributedString(string: trimmedText, attributes: textAttributes)
-        
+        let attributedString = NSAttributedString(
+            string: trimmedText,
+            attributes: textAttributes
+        )
+
         // Create a Core Text framesetter for text layout
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-        
+        let framesetter = CTFramesetterCreateWithAttributedString(
+            attributedString
+        )
+
         // Create a PDF context with the data consumer
-        guard let pdfContext = CGContext(consumer: CGDataConsumer(data: pdfData as CFMutableData)!, mediaBox: nil, nil) else {
+        guard
+            let pdfContext = CGContext(
+                consumer: CGDataConsumer(data: pdfData as CFMutableData)!,
+                mediaBox: nil,
+                nil
+            )
+        else {
             print("Failed to create PDF context")
             return nil
         }
-        
+
         // Track position within text
         var currentRange = CFRange(location: 0, length: 0)
         var pageIndex = 0
-        
+
         // Create a path for the text frame
         let framePath = CGMutablePath()
         framePath.addRect(contentRect)
-        
+
         // Continue creating pages until all text is processed
         while currentRange.location < attributedString.length {
             // Begin a new PDF page
             pdfContext.beginPage(mediaBox: nil)
-            
+
             // Fill the page with white background
             pdfContext.setFillColor(NSColor.white.cgColor)
-            pdfContext.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
-            
+            pdfContext.fill(
+                CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+            )
+
             // Create a frame for this page's text
             let frame = CTFramesetterCreateFrame(
-                framesetter, 
-                currentRange, 
-                framePath, 
+                framesetter,
+                currentRange,
+                framePath,
                 nil
             )
-            
+
             // Draw the text frame
             CTFrameDraw(frame, pdfContext)
-            
+
             // Get the range of text that was actually displayed in this frame
             let visibleRange = CTFrameGetVisibleStringRange(frame)
-            
+
             // Move to the next block of text for the next page
             currentRange.location += visibleRange.length
-            
+
             // Finish the page
             pdfContext.endPage()
             pageIndex += 1
-            
+
             // Safety check - don't allow infinite loops
             if pageIndex > 1000 {
                 print("Safety limit reached - stopping PDF generation")
                 break
             }
         }
-        
+
         // Finalize the PDF document
         pdfContext.closePDF()
-        
+
         return pdfData as Data
     }
 }
-
 
 // Add helper extension to find NSTextView
 extension NSView {
