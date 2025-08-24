@@ -26,10 +26,8 @@ struct ContentView: View {
                     EditorView(text: $entryManager.text)
 
                     // Bottom spacing for nav area
-                    if uiState.bottomNavOpacity > 0 {
-                        Spacer()
-                            .frame(height: 64)
-                    }
+                    Spacer()
+                        .frame(height: 64)
                 }
 
                 VStack {
@@ -63,18 +61,6 @@ struct ContentView: View {
                 })
             {
                 entryManager.debouncedSave(entry: currentEntry)
-            }
-        }
-        .onReceive(systemTimer) { _ in
-            if timer.timerIsRunning && timer.timeRemaining > 0 {
-                timer.timeRemaining -= 1
-            } else if timer.timeRemaining == 0 {
-                timer.timerIsRunning = false
-                if !hoverStates.isHoveringBottomNav {
-                    withAnimation(.easeOut(duration: 1.0)) {
-                        uiState.bottomNavOpacity = 1.0
-                    }
-                }
             }
         }
         .onReceive(

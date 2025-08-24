@@ -7,6 +7,14 @@ struct BottomBarView: View {
     @EnvironmentObject var uiState: UIState
     @EnvironmentObject var entryManager: EntryManager
 
+    private var bottomNavOpacity: Double {
+        if hoverStates.isHoveringBottomNav || !timer.timerIsRunning {
+            return 1.0
+        } else {
+            return 0.0
+        }
+    }
+
     var body: some View {
         HStack {
             FontControlsView()
@@ -19,19 +27,11 @@ struct BottomBarView: View {
                 appearance.colorScheme == .light ? .white : .black
             )
         )
-        .opacity(uiState.bottomNavOpacity)
+        .opacity(bottomNavOpacity)
         .onHover { hovering in
             hoverStates.isHoveringBottomNav = hovering
-            if hovering {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    uiState.bottomNavOpacity = 1.0
-                }
-            } else if timer.timerIsRunning {
-                withAnimation(.easeIn(duration: 1.0)) {
-                    uiState.bottomNavOpacity = 0.0
-                }
-            }
         }
+        .animation(.easeIn(duration: 0.2), value: bottomNavOpacity)
     }
 }
 

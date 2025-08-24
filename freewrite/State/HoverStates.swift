@@ -10,9 +10,6 @@ class HoverStates: ObservableObject {
     @Published var isHoveringNewEntry = false
     @Published var isHoveringClock = false
     @Published var isHoveringHistory = false
-    @Published var isHoveringHistoryText = false
-    @Published var isHoveringHistoryPath = false
-    @Published var isHoveringHistoryArrow = false
     @Published var isHoveringThemeToggle = false
     @Published var hoveredEntryId: UUID? = nil
     @Published var hoveredTrashId: UUID? = nil
