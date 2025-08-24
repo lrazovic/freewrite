@@ -11,6 +11,96 @@ import AppKit
 import UniformTypeIdentifiers
 import PDFKit
 
+// MARK: - State Management Classes
+
+class AppearanceSettings: ObservableObject {
+    @Published var selectedFont: String = "Palatino"
+    @Published var currentRandomFont: String = ""
+    @Published var fontSize: CGFloat = 18
+    @Published var colorScheme: ColorScheme = .light
+    
+    init() {
+        // Load saved color scheme preference
+        let savedScheme = UserDefaults.standard.string(forKey: "colorScheme") ?? "light"
+        colorScheme = savedScheme == "dark" ? .dark : .light
+    }
+}
+
+class TimerState: ObservableObject {
+    @Published var timeRemaining: Int = 900  // 15 minutes
+    @Published var timerIsRunning = false
+    @Published var lastClickTime: Date? = nil
+}
+
+class HoverStates: ObservableObject {
+    @Published var isHoveringTimer = false
+    @Published var isHoveringFullscreen = false
+    @Published var hoveredFont: String? = nil
+    @Published var isHoveringSize = false
+    @Published var isHoveringBottomNav = false
+    @Published var isHoveringChat = false
+    @Published var isHoveringNewEntry = false
+    @Published var isHoveringClock = false
+    @Published var isHoveringHistory = false
+    @Published var isHoveringHistoryText = false
+    @Published var isHoveringHistoryPath = false
+    @Published var isHoveringHistoryArrow = false
+    @Published var isHoveringThemeToggle = false
+    @Published var hoveredEntryId: UUID? = nil
+    @Published var hoveredTrashId: UUID? = nil
+    @Published var hoveredExportId: UUID? = nil
+}
+
+class UIState: ObservableObject {
+    @Published var isFullscreen = false
+    @Published var showingSidebar = false
+    @Published var showingChatMenu = false
+    @Published var chatMenuAnchor: CGPoint = .zero
+    @Published var bottomNavOpacity: Double = 1.0
+    @Published var didCopyPrompt: Bool = false
+    @Published var placeholderText: String = ""
+    @Published var scrollOffset: CGFloat = 0
+    @Published var viewHeight: CGFloat = 0
+}
+
+@MainActor
+class EntryManager: ObservableObject {
+    @Published var entries: [HumanEntry] = []
+    @Published var selectedEntryId: UUID? = nil
+    @Published var text: String = ""
+    
+    private var debounceTimer: Timer?
+    private let fileManager = FileManager.default
+    
+    func saveEntry(entry: HumanEntry) {
+        do {
+            try text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
+            print("Successfully saved entry: \(entry.filename)")
+            
+            // Update preview after saving
+            let preview = text
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
+            
+            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                entries[index].previewText = truncated
+            }
+        } catch {
+            print("Error saving entry: \(error)")
+        }
+    }
+    
+    func debouncedSave(entry: HumanEntry) {
+        debounceTimer?.invalidate()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+            Task { @MainActor in
+                self.saveEntry(entry: entry)
+            }
+        }
+    }
+}
+
 struct HumanEntry: Identifiable {
     let id: UUID
     let date: String
@@ -52,56 +142,24 @@ struct HeartEmoji: Identifiable {
 }
 
 struct ContentView: View {
+    // MARK: - State Objects
+    @StateObject private var appearance = AppearanceSettings()
+    @StateObject private var timer = TimerState()
+    @StateObject private var hoverStates = HoverStates()
+    @StateObject private var uiState = UIState()
+    @StateObject private var entryManager = EntryManager()
+    
+    // MARK: - Constants
     private let headerString = "\n\n"
-    @State private var entries: [HumanEntry] = []
-    @State private var text: String = ""  // Remove initial welcome text since we'll handle it in createNewEntry
+    private let systemTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let entryHeight: CGFloat = 40
     
-    @State private var isFullscreen = false
-    @State private var selectedFont: String = "Palatino"
-    @State private var currentRandomFont: String = ""
-    @State private var timeRemaining: Int = 900  // Changed to 900 seconds (15 minutes)
-    @State private var timerIsRunning = false
-    @State private var isHoveringTimer = false
-    @State private var isHoveringFullscreen = false
-    @State private var hoveredFont: String? = nil
-    @State private var isHoveringSize = false
-    @State private var fontSize: CGFloat = 18
-    @State private var blinkCount = 0
-    @State private var isBlinking = false
-    @State private var opacity: Double = 1.0
-    @State private var shouldShowGray = true // New state to control color
-    @State private var lastClickTime: Date? = nil
-    @State private var bottomNavOpacity: Double = 1.0
-    @State private var isHoveringBottomNav = false
-    @State private var selectedEntryIndex: Int = 0
-    @State private var scrollOffset: CGFloat = 0
-    @State private var selectedEntryId: UUID? = nil
-    @State private var hoveredEntryId: UUID? = nil
-    @State private var isHoveringChat = false  // Add this state variable
-    @State private var showingChatMenu = false
-    @State private var chatMenuAnchor: CGPoint = .zero
-    @State private var showingSidebar = false  // Add this state variable
-    @State private var hoveredTrashId: UUID? = nil
-    @State private var hoveredExportId: UUID? = nil
-    @State private var placeholderText: String = ""  // Add this line
-    @State private var isHoveringNewEntry = false
-    @State private var isHoveringClock = false
-    @State private var isHoveringHistory = false
-    @State private var isHoveringHistoryText = false
-    @State private var isHoveringHistoryPath = false
-    @State private var isHoveringHistoryArrow = false
-    @State private var colorScheme: ColorScheme = .light // Add state for color scheme
-    @State private var isHoveringThemeToggle = false // Add state for theme toggle hover
-    @State private var didCopyPrompt: Bool = false // Add state for copy prompt feedback
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    let entryHeight: CGFloat = 40
-    
-    let availableFonts = NSFontManager.shared.availableFontFamilies
-    let standardFonts = ["Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino"]
-    let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
-    let placeholderOptions = [
+    private let availableFonts = NSFontManager.shared.availableFontFamilies
+    private let standardFonts = ["Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino"]
+    private let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
+    private let placeholderOptions = [
         "\n\nBegin writing",
-        "\n\nPick a thought and go",
+        "\n\nPick a thought and go", 
         "\n\nStart typing",
         "\n\nWhat's on your mind",
         "\n\nJust start",
@@ -110,9 +168,8 @@ struct ContentView: View {
         "\n\nJust say it"
     ]
     
-    // Add file manager and debounce timer
+    // Add file manager
     private let fileManager = FileManager.default
-    @State private var debounceTimer: Timer?
     
     // Add cached documents directory
     private let documentsDirectory: URL = {
@@ -158,13 +215,6 @@ struct ContentView: View {
     Here's my journal entry:
     """
     
-    // Initialize with saved theme preference if available
-    init() {
-        // Load saved color scheme preference
-        let savedScheme = UserDefaults.standard.string(forKey: "colorScheme") ?? "light"
-        _colorScheme = State(initialValue: savedScheme == "dark" ? .dark : .light)
-    }
-    
     // Modify getDocumentsDirectory to use cached value
     private func getDocumentsDirectory() -> URL {
         return documentsDirectory
@@ -178,7 +228,7 @@ struct ContentView: View {
         print("Attempting to save file to: \(fileURL.path)")
         
         do {
-            try text.write(to: fileURL, atomically: true, encoding: .utf8)
+            try entryManager.text.write(to: fileURL, atomically: true, encoding: .utf8)
             print("Successfully saved file")
         } catch {
             print("Error saving file: \(error)")
@@ -195,7 +245,7 @@ struct ContentView: View {
         
         do {
             if fileManager.fileExists(atPath: fileURL.path) {
-                text = try String(contentsOf: fileURL, encoding: .utf8)
+                entryManager.text = try String(contentsOf: fileURL, encoding: .utf8)
                 print("Successfully loaded file")
             } else {
                 print("File does not exist yet")
@@ -272,11 +322,11 @@ struct ContentView: View {
             }
             
             // Sort by modification date (most recent first)
-            entries = entriesWithDates
+            entryManager.entries = entriesWithDates
                 .sorted { $0.entry.modificationDate > $1.entry.modificationDate }
                 .map { $0.entry }
             
-            print("Successfully loaded metadata for \(entries.count) entries")
+            print("Successfully loaded metadata for \(entryManager.entries.count) entries")
             
             // Handle entry selection logic
             handleInitialEntrySelection()
@@ -294,18 +344,18 @@ struct ContentView: View {
         let todayStart = calendar.startOfDay(for: today)
         
         // Check if there's a recent entry from today
-        let todayEntry = entries.first { entry in
+        let todayEntry = entryManager.entries.first { entry in
             let entryDayStart = calendar.startOfDay(for: entry.modificationDate)
             return calendar.isDate(entryDayStart, inSameDayAs: todayStart)
         }
         
-        if entries.isEmpty {
+        if entryManager.entries.isEmpty {
             // First time user - create entry with welcome message
             print("First time user, creating welcome entry")
             createNewEntry()
         } else if let todayEntry = todayEntry {
             // Select today's entry
-            selectedEntryId = todayEntry.id
+            entryManager.selectedEntryId = todayEntry.id
             loadEntry(entry: todayEntry)
         } else {
             // No entry for today - create new entry
@@ -315,112 +365,103 @@ struct ContentView: View {
     }
     
     var randomButtonTitle: String {
-        return currentRandomFont.isEmpty ? "Random" : "Random [\(currentRandomFont)]"
+        return appearance.currentRandomFont.isEmpty ? "Random" : "Random [\(appearance.currentRandomFont)]"
     }
     
     var timerButtonTitle: String {
-        if !timerIsRunning && timeRemaining == 900 {
+        if !timer.timerIsRunning && timer.timeRemaining == 900 {
             return "15:00"
         }
-        let minutes = timeRemaining / 60
-        let seconds = timeRemaining % 60
+        let minutes = timer.timeRemaining / 60
+        let seconds = timer.timeRemaining % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
     
     var timerColor: Color {
-        if timerIsRunning {
-            return isHoveringTimer ? (colorScheme == .light ? .black : .white) : .gray.opacity(0.8)
+        if timer.timerIsRunning {
+            return hoverStates.isHoveringTimer ? (appearance.colorScheme == .light ? .black : .white) : .gray.opacity(0.8)
         } else {
-            return isHoveringTimer ? (colorScheme == .light ? .black : .white) : (colorScheme == .light ? .gray : .gray.opacity(0.8))
+            return hoverStates.isHoveringTimer ? (appearance.colorScheme == .light ? .black : .white) : (appearance.colorScheme == .light ? .gray : .gray.opacity(0.8))
         }
     }
     
     var lineHeight: CGFloat {
-        let font = NSFont(name: selectedFont, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        let font = NSFont(name: appearance.selectedFont, size: appearance.fontSize) ?? .systemFont(ofSize: appearance.fontSize)
         let defaultLineHeight = getLineHeight(font: font)
-        return (fontSize * 1.5) - defaultLineHeight
+        return (appearance.fontSize * 1.5) - defaultLineHeight
     }
     
     var fontSizeButtonTitle: String {
-        return "\(Int(fontSize))px"
+        return "\(Int(appearance.fontSize))px"
     }
     
     var placeholderOffset: CGFloat {
         // Instead of using calculated line height, use a simple offset
-        return fontSize / 2
+        return appearance.fontSize / 2
     }
     
     // Add a color utility computed property
     var popoverBackgroundColor: Color {
-        return colorScheme == .light ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
+        return appearance.colorScheme == .light ? Color(NSColor.controlBackgroundColor) : Color(NSColor.darkGray)
     }
     
     var popoverTextColor: Color {
-        return colorScheme == .light ? Color.primary : Color.white
+        return appearance.colorScheme == .light ? Color.primary : Color.white
     }
     
-    @State private var viewHeight: CGFloat = 0
-    
     var body: some View {
-        let buttonBackground = colorScheme == .light ? Color.white : Color.black
+        let buttonBackground = appearance.colorScheme == .light ? Color.white : Color.black
         let navHeight: CGFloat = 68
-        let textColor = colorScheme == .light ? Color.gray : Color.gray.opacity(0.8)
-        let textHoverColor = colorScheme == .light ? Color.black : Color.white
+        let textColor = appearance.colorScheme == .light ? Color.gray : Color.gray.opacity(0.8)
+        let textHoverColor = appearance.colorScheme == .light ? Color.black : Color.white
         
         HStack(spacing: 0) {
             // Main content
             ZStack {
-                Color(colorScheme == .light ? .white : .black)
+                Color(appearance.colorScheme == .light ? .white : .black)
                     .ignoresSafeArea()
                 
-              
-                    TextEditor(text: Binding(
-                        get: { text },
-                        set: { newValue in
-                            // Ensure the text always starts with two newlines
-                            if !newValue.hasPrefix("\n\n") {
-                                text = "\n\n" + newValue.trimmingCharacters(in: .newlines)
-                            } else {
-                                text = newValue
-                            }
+                TextEditor(text: Binding(
+                    get: { entryManager.text },
+                    set: { newValue in
+                        // Ensure the text always starts with two newlines
+                        if !newValue.hasPrefix("\n\n") {
+                            entryManager.text = "\n\n" + newValue.trimmingCharacters(in: .newlines)
+                        } else {
+                            entryManager.text = newValue
                         }
-                    ))
-                    .background(Color(colorScheme == .light ? .white : .black))
-                    .font(.custom(selectedFont, size: fontSize))
-                    .foregroundColor(colorScheme == .light ? Color(red: 0.20, green: 0.20, blue: 0.20) : Color(red: 0.9, green: 0.9, blue: 0.9))
-                    .scrollContentBackground(.hidden)
-                    .scrollIndicators(.never)
-                    .lineSpacing(lineHeight)
-                    .frame(maxWidth: 650)
-                    
-          
-                    .id("\(selectedFont)-\(fontSize)-\(colorScheme)")
-                    .padding(.bottom, bottomNavOpacity > 0 ? navHeight : 0)
-                    .ignoresSafeArea()
-                    .colorScheme(colorScheme)
-                    .onAppear {
-                        placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
-                        // Removed findSubview code which was causing errors
                     }
-                    .overlay(
-                        ZStack(alignment: .topLeading) {
-                            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(placeholderText)
-                                    .font(.custom(selectedFont, size: fontSize))
-                                    .foregroundColor(colorScheme == .light ? .gray.opacity(0.5) : .gray.opacity(0.6))
-                                // .padding(.top, 8)
-                                // .padding(.leading, 8)
-                                    .allowsHitTesting(false)
-                                    .offset(x: 5, y: placeholderOffset)
-                            }
-                        }, alignment: .topLeading
-                    )
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                                    proxy.size.height
-                                } action: { height in
-                                    viewHeight = height
-                                }
-                                .contentMargins(.bottom, viewHeight / 4)
+                ))
+                .background(Color(appearance.colorScheme == .light ? .white : .black))
+                .font(.custom(appearance.selectedFont, size: appearance.fontSize))
+                .foregroundColor(appearance.colorScheme == .light ? Color(red: 0.20, green: 0.20, blue: 0.20) : Color(red: 0.9, green: 0.9, blue: 0.9))
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.never)
+                .lineSpacing(lineHeight)
+                .frame(maxWidth: 650)
+                .padding(.bottom, uiState.bottomNavOpacity > 0 ? navHeight : 0)
+                .ignoresSafeArea()
+                .colorScheme(appearance.colorScheme)
+                .onAppear {
+                    uiState.placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
+                }
+                .overlay(
+                    ZStack(alignment: .topLeading) {
+                        if entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(uiState.placeholderText)
+                                .font(.custom(appearance.selectedFont, size: appearance.fontSize))
+                                .foregroundColor(appearance.colorScheme == .light ? .gray.opacity(0.5) : .gray.opacity(0.6))
+                                .allowsHitTesting(false)
+                                .offset(x: 5, y: placeholderOffset)
+                        }
+                    }, alignment: .topLeading
+                )
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    uiState.viewHeight = height
+                }
+                .contentMargins(.bottom, uiState.viewHeight / 4)
                     
                 
                 VStack {
@@ -429,16 +470,16 @@ struct ContentView: View {
                         // Font buttons (moved to left)
                         HStack(spacing: 8) {
                             Button(fontSizeButtonTitle) {
-                                if let currentIndex = fontSizes.firstIndex(of: fontSize) {
+                                if let currentIndex = fontSizes.firstIndex(of: appearance.fontSize) {
                                     let nextIndex = (currentIndex + 1) % fontSizes.count
-                                    fontSize = fontSizes[nextIndex]
+                                    appearance.fontSize = fontSizes[nextIndex]
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(isHoveringSize ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.isHoveringSize ? textHoverColor : textColor)
                             .onHover { hovering in
-                                isHoveringSize = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringSize = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -450,14 +491,14 @@ struct ContentView: View {
                                 .foregroundColor(.gray)
                             
                             Button("Lato") {
-                                selectedFont = "Lato-Regular"
-                                currentRandomFont = ""
+                                appearance.selectedFont = "Lato-Regular"
+                                appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "Lato" ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.hoveredFont == "Lato" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "Lato" : nil
-                                isHoveringBottomNav = hovering
+                                hoverStates.hoveredFont = hovering ? "Lato" : nil
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -469,14 +510,14 @@ struct ContentView: View {
                                 .foregroundColor(.gray)
                             
                             Button("Palatino") {
-                                selectedFont = "Palatino"
-                                currentRandomFont = ""
+                                appearance.selectedFont = "Palatino"
+                                appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "Palatino" ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.hoveredFont == "Palatino" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "Palatino" : nil
-                                isHoveringBottomNav = hovering
+                                hoverStates.hoveredFont = hovering ? "Palatino" : nil
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -488,14 +529,14 @@ struct ContentView: View {
                                 .foregroundColor(.gray)
                             
                             Button("System") {
-                                selectedFont = ".AppleSystemUIFont"
-                                currentRandomFont = ""
+                                appearance.selectedFont = ".AppleSystemUIFont"
+                                appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "System" ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.hoveredFont == "System" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "System" : nil
-                                isHoveringBottomNav = hovering
+                                hoverStates.hoveredFont = hovering ? "System" : nil
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -507,14 +548,14 @@ struct ContentView: View {
                                 .foregroundColor(.gray)
                             
                             Button("Serif") {
-                                selectedFont = "Times New Roman"
-                                currentRandomFont = ""
+                                appearance.selectedFont = "Times New Roman"
+                                appearance.currentRandomFont = ""
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "Serif" ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.hoveredFont == "Serif" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "Serif" : nil
-                                isHoveringBottomNav = hovering
+                                hoverStates.hoveredFont = hovering ? "Serif" : nil
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -527,15 +568,15 @@ struct ContentView: View {
                             
                             Button(randomButtonTitle) {
                                 if let randomFont = availableFonts.randomElement() {
-                                    selectedFont = randomFont
-                                    currentRandomFont = randomFont
+                                    appearance.selectedFont = randomFont
+                                    appearance.currentRandomFont = randomFont
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(hoveredFont == "Random" ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.hoveredFont == "Random" ? textHoverColor : textColor)
                             .onHover { hovering in
-                                hoveredFont = hovering ? "Random" : nil
-                                isHoveringBottomNav = hovering
+                                hoverStates.hoveredFont = hovering ? "Random" : nil
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -546,7 +587,7 @@ struct ContentView: View {
                         .padding(8)
                         .cornerRadius(6)
                         .onHover { hovering in
-                            isHoveringBottomNav = hovering
+                            hoverStates.isHoveringBottomNav = hovering
                         }
                         
                         Spacer()
@@ -555,21 +596,21 @@ struct ContentView: View {
                         HStack(spacing: 8) {
                             Button(timerButtonTitle) {
                                 let now = Date()
-                                if let lastClick = lastClickTime,
+                                if let lastClick = timer.lastClickTime,
                                    now.timeIntervalSince(lastClick) < 0.3 {
-                                    timeRemaining = 900
-                                    timerIsRunning = false
-                                    lastClickTime = nil
+                                    timer.timeRemaining = 900
+                                    timer.timerIsRunning = false
+                                    timer.lastClickTime = nil
                                 } else {
-                                    timerIsRunning.toggle()
-                                    lastClickTime = now
+                                    timer.timerIsRunning.toggle()
+                                    timer.lastClickTime = now
                                 }
                             }
                             .buttonStyle(.plain)
                             .foregroundColor(timerColor)
                             .onHover { hovering in
-                                isHoveringTimer = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringTimer = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -578,17 +619,17 @@ struct ContentView: View {
                             }
                             .onAppear {
                                 NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-                                    if isHoveringTimer {
+                                    if hoverStates.isHoveringTimer {
                                         let scrollBuffer = event.deltaY * 0.25
                                         
                                         if abs(scrollBuffer) >= 0.1 {
-                                            let currentMinutes = timeRemaining / 60
+                                            let currentMinutes = timer.timeRemaining / 60
                                             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
                                             let direction = -scrollBuffer > 0 ? 5 : -5
                                             let newMinutes = currentMinutes + direction
                                             let roundedMinutes = (newMinutes / 5) * 5
                                             let newTime = roundedMinutes * 60
-                                            timeRemaining = min(max(newTime, 0), 2700)
+                                            timer.timeRemaining = min(max(newTime, 0), 2700)
                                         }
                                     }
                                     return event
@@ -599,24 +640,24 @@ struct ContentView: View {
                                 .foregroundColor(.gray)
                             
                             Button("Chat") {
-                                showingChatMenu = true
+                                uiState.showingChatMenu = true
                                 // Ensure didCopyPrompt is reset when opening the menu
-                                didCopyPrompt = false
+                                uiState.didCopyPrompt = false
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(isHoveringChat ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.isHoveringChat ? textHoverColor : textColor)
                             .onHover { hovering in
-                                isHoveringChat = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringChat = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
                                     NSCursor.pop()
                                 }
                             }
-                            .popover(isPresented: $showingChatMenu, attachmentAnchor: .point(UnitPoint(x: 0.5, y: 0)), arrowEdge: .top) {
+                            .popover(isPresented: $uiState.showingChatMenu, attachmentAnchor: .point(UnitPoint(x: 0.5, y: 0)), arrowEdge: .top) {
                                 VStack(spacing: 0) { // Wrap everything in a VStack for consistent styling and onChange
-                                    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
                                     
                                     // Calculate potential URL lengths
                                     let gptFullText = aiChatPrompt + "\n\n" + trimmedText
@@ -643,9 +684,9 @@ struct ContentView: View {
                                         
                                         Button(action: {
                                             copyPromptToClipboard()
-                                            didCopyPrompt = true
+                                            uiState.didCopyPrompt = true
                                         }) {
-                                            Text(didCopyPrompt ? "Copied!" : "Copy Prompt")
+                                            Text(uiState.didCopyPrompt ? "Copied!" : "Copy Prompt")
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 8)
@@ -660,14 +701,14 @@ struct ContentView: View {
                                             }
                                         }
                                         
-                                    } else if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("hi. my name is farza.") {
+                                    } else if entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("hi. my name is farza.") {
                                         Text("Yo. Sorry, you can't chat with the guide lol. Please write your own entry.")
                                             .font(.system(size: 14))
                                             .foregroundColor(popoverTextColor)
                                             .frame(width: 250)
                                             .padding(.horizontal, 12)
                                             .padding(.vertical, 8)
-                                    } else if text.count < 350 {
+                                    } else if entryManager.text.count < 350 {
                                         Text("Please free write for at minimum 5 minutes first. Then click this. Trust.")
                                             .font(.system(size: 14))
                                             .foregroundColor(popoverTextColor)
@@ -677,7 +718,7 @@ struct ContentView: View {
                                     } else {
                                         // View for normal text length
                                         Button(action: {
-                                            showingChatMenu = false
+                                            uiState.showingChatMenu = false
                                             openChatGPT()
                                         }) {
                                             Text("ChatGPT")
@@ -698,7 +739,7 @@ struct ContentView: View {
                                         Divider()
                                         
                                         Button(action: {
-                                            showingChatMenu = false
+                                            uiState.showingChatMenu = false
                                             openClaude()
                                         }) {
                                             Text("Claude")
@@ -721,9 +762,9 @@ struct ContentView: View {
                                         Button(action: {
                                             // Don't dismiss menu, just copy and update state
                                             copyPromptToClipboard()
-                                            didCopyPrompt = true
+                                            uiState.didCopyPrompt = true
                                         }) {
-                                            Text(didCopyPrompt ? "Copied!" : "Copy Prompt")
+                                            Text(uiState.didCopyPrompt ? "Copied!" : "Copy Prompt")
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 8)
@@ -744,9 +785,9 @@ struct ContentView: View {
                                 .cornerRadius(8)
                                 .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
                                 // Reset copied state when popover dismisses
-                                .onChange(of: showingChatMenu) { oldValue, newValue in
+                                .onChange(of: uiState.showingChatMenu) { oldValue, newValue in
                                     if !newValue {
-                                        didCopyPrompt = false
+                                        uiState.didCopyPrompt = false
                                     }
                                 }
                             }
@@ -754,16 +795,16 @@ struct ContentView: View {
                             Text("•")
                                 .foregroundColor(.gray)
                             
-                            Button(isFullscreen ? "Minimize" : "Fullscreen") {
+                            Button(uiState.isFullscreen ? "Minimize" : "Fullscreen") {
                                 if let window = NSApplication.shared.windows.first {
                                     window.toggleFullScreen(nil)
                                 }
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(isHoveringFullscreen ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.isHoveringFullscreen ? textHoverColor : textColor)
                             .onHover { hovering in
-                                isHoveringFullscreen = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringFullscreen = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -781,10 +822,10 @@ struct ContentView: View {
                                     .font(.system(size: 13))
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(isHoveringNewEntry ? textHoverColor : textColor)
+                            .foregroundColor(hoverStates.isHoveringNewEntry ? textHoverColor : textColor)
                             .onHover { hovering in
-                                isHoveringNewEntry = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringNewEntry = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -797,17 +838,17 @@ struct ContentView: View {
                             
                             // Theme toggle button
                             Button(action: {
-                                colorScheme = colorScheme == .light ? .dark : .light
+                                appearance.colorScheme = appearance.colorScheme == .light ? .dark : .light
                                 // Save preference
-                                UserDefaults.standard.set(colorScheme == .light ? "light" : "dark", forKey: "colorScheme")
+                                UserDefaults.standard.set(appearance.colorScheme == .light ? "light" : "dark", forKey: "colorScheme")
                             }) {
-                                Image(systemName: colorScheme == .light ? "moon.fill" : "sun.max.fill")
-                                    .foregroundColor(isHoveringThemeToggle ? textHoverColor : textColor)
+                                Image(systemName: appearance.colorScheme == .light ? "moon.fill" : "sun.max.fill")
+                                    .foregroundColor(hoverStates.isHoveringThemeToggle ? textHoverColor : textColor)
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
-                                isHoveringThemeToggle = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringThemeToggle = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -821,16 +862,16 @@ struct ContentView: View {
                             // Version history button
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    showingSidebar.toggle()
+                                    uiState.showingSidebar.toggle()
                                 }
                             }) {
                                 Image(systemName: "clock.arrow.circlepath")
-                                    .foregroundColor(isHoveringClock ? textHoverColor : textColor)
+                                    .foregroundColor(hoverStates.isHoveringClock ? textHoverColor : textColor)
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
-                                isHoveringClock = hovering
-                                isHoveringBottomNav = hovering
+                                hoverStates.isHoveringClock = hovering
+                                hoverStates.isHoveringBottomNav = hovering
                                 if hovering {
                                     NSCursor.pointingHand.push()
                                 } else {
@@ -841,21 +882,21 @@ struct ContentView: View {
                         .padding(8)
                         .cornerRadius(6)
                         .onHover { hovering in
-                            isHoveringBottomNav = hovering
+                            hoverStates.isHoveringBottomNav = hovering
                         }
                     }
                     .padding()
-                    .background(Color(colorScheme == .light ? .white : .black))
-                    .opacity(bottomNavOpacity)
+                    .background(Color(appearance.colorScheme == .light ? .white : .black))
+                    .opacity(uiState.bottomNavOpacity)
                     .onHover { hovering in
-                        isHoveringBottomNav = hovering
+                        hoverStates.isHoveringBottomNav = hovering
                         if hovering {
                             withAnimation(.easeOut(duration: 0.2)) {
-                                bottomNavOpacity = 1.0
+                                uiState.bottomNavOpacity = 1.0
                             }
-                        } else if timerIsRunning {
+                        } else if timer.timerIsRunning {
                             withAnimation(.easeIn(duration: 1.0)) {
-                                bottomNavOpacity = 0.0
+                                uiState.bottomNavOpacity = 0.0
                             }
                         }
                     }
@@ -863,7 +904,7 @@ struct ContentView: View {
             }
             
             // Right sidebar
-            if showingSidebar {
+            if uiState.showingSidebar {
                 Divider()
                 
                 VStack(spacing: 0) {
@@ -876,10 +917,10 @@ struct ContentView: View {
                                 HStack(spacing: 4) {
                                     Text("History")
                                         .font(.system(size: 13))
-                                        .foregroundColor(isHoveringHistory ? textHoverColor : textColor)
+                                        .foregroundColor(hoverStates.isHoveringHistory ? textHoverColor : textColor)
                                     Image(systemName: "arrow.up.right")
                                         .font(.system(size: 10))
-                                        .foregroundColor(isHoveringHistory ? textHoverColor : textColor)
+                                        .foregroundColor(hoverStates.isHoveringHistory ? textHoverColor : textColor)
                                 }
                                 Text(getDocumentsDirectory().path)
                                     .font(.system(size: 10))
@@ -893,7 +934,7 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .onHover { hovering in
-                        isHoveringHistory = hovering
+                        hoverStates.isHoveringHistory = hovering
                     }
                     
                     Divider()
@@ -901,16 +942,16 @@ struct ContentView: View {
                     // Entries List
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(entries) { entry in
+                            ForEach(entryManager.entries) { entry in
                                 Button(action: {
-                                    if selectedEntryId != entry.id {
+                                    if entryManager.selectedEntryId != entry.id {
                                         // Save current entry before switching
-                                        if let currentId = selectedEntryId,
-                                           let currentEntry = entries.first(where: { $0.id == currentId }) {
-                                            saveEntry(entry: currentEntry)
+                                        if let currentId = entryManager.selectedEntryId,
+                                           let currentEntry = entryManager.entries.first(where: { $0.id == currentId }) {
+                                            entryManager.saveEntry(entry: currentEntry)
                                         }
                                         
-                                        selectedEntryId = entry.id
+                                        entryManager.selectedEntryId = entry.id
                                         loadEntry(entry: entry)
                                     }
                                 }) {
@@ -932,7 +973,7 @@ struct ContentView: View {
                                                 Spacer()
                                                 
                                                 // Export/Trash icons that appear on hover
-                                                if hoveredEntryId == entry.id {
+                                                if hoverStates.hoveredEntryId == entry.id {
                                                     HStack(spacing: 8) {
                                                         // Export PDF button
                                                         Button(action: {
@@ -940,15 +981,15 @@ struct ContentView: View {
                                                         }) {
                                                             Image(systemName: "arrow.down.circle")
                                                                 .font(.system(size: 11))
-                                                                .foregroundColor(hoveredExportId == entry.id ? 
-                                                                    (colorScheme == .light ? .black : .white) : 
-                                                                    (colorScheme == .light ? .gray : .gray.opacity(0.8)))
+                                                                .foregroundColor(hoverStates.hoveredExportId == entry.id ? 
+                                                                    (appearance.colorScheme == .light ? .black : .white) : 
+                                                                    (appearance.colorScheme == .light ? .gray : .gray.opacity(0.8)))
                                                         }
                                                         .buttonStyle(.plain)
                                                         .help("Export entry as PDF")
                                                         .onHover { hovering in
                                                             withAnimation(.easeInOut(duration: 0.2)) {
-                                                                hoveredExportId = hovering ? entry.id : nil
+                                                                hoverStates.hoveredExportId = hovering ? entry.id : nil
                                                             }
                                                             if hovering {
                                                                 NSCursor.pointingHand.push()
@@ -963,12 +1004,12 @@ struct ContentView: View {
                                                         }) {
                                                             Image(systemName: "trash")
                                                                 .font(.system(size: 11))
-                                                                .foregroundColor(hoveredTrashId == entry.id ? .red : .gray)
+                                                                .foregroundColor(hoverStates.hoveredTrashId == entry.id ? .red : .gray)
                                                         }
                                                         .buttonStyle(.plain)
                                                         .onHover { hovering in
                                                             withAnimation(.easeInOut(duration: 0.2)) {
-                                                                hoveredTrashId = hovering ? entry.id : nil
+                                                                hoverStates.hoveredTrashId = hovering ? entry.id : nil
                                                             }
                                                             if hovering {
                                                                 NSCursor.pointingHand.push()
@@ -997,7 +1038,7 @@ struct ContentView: View {
                                 .contentShape(Rectangle())
                                 .onHover { hovering in
                                     withAnimation(.easeInOut(duration: 0.2)) {
-                                        hoveredEntryId = hovering ? entry.id : nil
+                                        hoverStates.hoveredEntryId = hovering ? entry.id : nil
                                     }
                                 }
                                 .onAppear {
@@ -1007,7 +1048,7 @@ struct ContentView: View {
                                 }
                                 .help("Click to select this entry")  // Add tooltip
                                 
-                                if entry.id != entries.last?.id {
+                                if entry.id != entryManager.entries.last?.id {
                                     Divider()
                                 }
                             }
@@ -1016,52 +1057,47 @@ struct ContentView: View {
                     .scrollIndicators(.never)
                 }
                 .frame(width: 200)
-                .background(Color(colorScheme == .light ? .white : NSColor.black))
+                .background(Color(appearance.colorScheme == .light ? .white : NSColor.black))
             }
         }
         .frame(minWidth: 1100, minHeight: 600)
-        .animation(.easeInOut(duration: 0.2), value: showingSidebar)
-        .preferredColorScheme(colorScheme)
+        .animation(.easeInOut(duration: 0.2), value: uiState.showingSidebar)
+        .preferredColorScheme(appearance.colorScheme)
         .onAppear {
-            showingSidebar = false  // Hide sidebar by default
+            uiState.showingSidebar = false  // Hide sidebar by default
             loadExistingEntries()
         }
-        .onChange(of: text) { oldValue, newValue in
-            // Debounce text saving to minimize I/O
-            debounceTimer?.invalidate()
-            debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                Task { @MainActor in
-                    if let currentId = selectedEntryId,
-                       let currentEntry = entries.first(where: { $0.id == currentId }) {
-                        saveEntry(entry: currentEntry)
-                    }
-                }
+        .onChange(of: entryManager.text) { oldValue, newValue in
+            // Use the debounced save method from EntryManager
+            if let currentId = entryManager.selectedEntryId,
+               let currentEntry = entryManager.entries.first(where: { $0.id == currentId }) {
+                entryManager.debouncedSave(entry: currentEntry)
             }
         }
-        .onReceive(timer) { _ in
-            if timerIsRunning && timeRemaining > 0 {
-                timeRemaining -= 1
-            } else if timeRemaining == 0 {
-                timerIsRunning = false
-                if !isHoveringBottomNav {
+        .onReceive(systemTimer) { _ in
+            if timer.timerIsRunning && timer.timeRemaining > 0 {
+                timer.timeRemaining -= 1
+            } else if timer.timeRemaining == 0 {
+                timer.timerIsRunning = false
+                if !hoverStates.isHoveringBottomNav {
                     withAnimation(.easeOut(duration: 1.0)) {
-                        bottomNavOpacity = 1.0
+                        uiState.bottomNavOpacity = 1.0
                     }
                 }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in
-            isFullscreen = true
+            uiState.isFullscreen = true
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in
-            isFullscreen = false
+            uiState.isFullscreen = false
         }
     }
     
     private func backgroundColor(for entry: HumanEntry) -> Color {
-        if entry.id == selectedEntryId {
+        if entry.id == entryManager.selectedEntryId {
             return Color.gray.opacity(0.1)  // More subtle selection highlight
-        } else if entry.id == hoveredEntryId {
+        } else if entry.id == hoverStates.hoveredEntryId {
             return Color.gray.opacity(0.05)  // Even more subtle hover state
         } else {
             return Color.clear
@@ -1073,8 +1109,8 @@ struct ContentView: View {
         guard entry.previewText == nil && !entry.isPreviewLoading else { return }
         
         // Mark as loading
-        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-            entries[index].isPreviewLoading = true
+        if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+            entryManager.entries[index].isPreviewLoading = true
         }
         
         // Load preview asynchronously
@@ -1088,17 +1124,17 @@ struct ContentView: View {
                 
                 await MainActor.run {
                     // Find and update the entry in the entries array
-                    if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                        entries[index].previewText = truncated
-                        entries[index].isPreviewLoading = false
+                    if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+                        entryManager.entries[index].previewText = truncated
+                        entryManager.entries[index].isPreviewLoading = false
                     }
                 }
             } catch {
                 print("Error loading preview text: \(error)")
                 await MainActor.run {
-                    if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                        entries[index].previewText = "Error loading preview"
-                        entries[index].isPreviewLoading = false
+                    if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+                        entryManager.entries[index].previewText = "Error loading preview"
+                        entryManager.entries[index].isPreviewLoading = false
                     }
                 }
             }
@@ -1107,17 +1143,17 @@ struct ContentView: View {
     
     private func saveEntry(entry: HumanEntry) {
         do {
-            try text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
+            try entryManager.text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
             print("Successfully saved entry: \(entry.filename)")
             
             // Update preview after saving
-            let preview = text
+            let preview = entryManager.text
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
             
-            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries[index].previewText = truncated
+            if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+                entryManager.entries[index].previewText = truncated
             }
         } catch {
             print("Error saving entry: \(error)")
@@ -1127,7 +1163,7 @@ struct ContentView: View {
     private func loadEntry(entry: HumanEntry) {
         do {
             if fileManager.fileExists(atPath: entry.fileURL.path) {
-                text = try String(contentsOf: entry.fileURL, encoding: .utf8)
+                entryManager.text = try String(contentsOf: entry.fileURL, encoding: .utf8)
                 print("Successfully loaded entry: \(entry.filename)")
             }
         } catch {
@@ -1137,30 +1173,30 @@ struct ContentView: View {
     
     private func createNewEntry() {
         let newEntry = HumanEntry.createNew()
-        entries.insert(newEntry, at: 0) // Add to the beginning
-        selectedEntryId = newEntry.id
+        entryManager.entries.insert(newEntry, at: 0) // Add to the beginning
+        entryManager.selectedEntryId = newEntry.id
         
         // If this is the first entry (entries was empty before adding this one)
-        if entries.count == 1 {
+        if entryManager.entries.count == 1 {
             // Read welcome message from default.md
             if let defaultMessageURL = Bundle.main.url(forResource: "default", withExtension: "md"),
                let defaultMessage = try? String(contentsOf: defaultMessageURL, encoding: .utf8) {
-                text = "\n\n" + defaultMessage
+                entryManager.text = "\n\n" + defaultMessage
             }
             // Save the welcome message immediately
-            saveEntry(entry: newEntry)
+            entryManager.saveEntry(entry: newEntry)
         } else {
             // Regular new entry starts with newlines
-            text = "\n\n"
+            entryManager.text = "\n\n"
             // Randomize placeholder text for new entry
-            placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
+            uiState.placeholderText = placeholderOptions.randomElement() ?? "\n\nBegin writing"
             // Save the empty entry
-            saveEntry(entry: newEntry)
+            entryManager.saveEntry(entry: newEntry)
         }
     }
     
     private func openChatGPT() {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let fullText = aiChatPrompt + "\n\n" + trimmedText
         
         if let encodedText = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -1170,7 +1206,7 @@ struct ContentView: View {
     }
     
     private func openClaude() {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let fullText = claudePrompt + "\n\n" + trimmedText
         
         if let encodedText = fullText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -1180,7 +1216,7 @@ struct ContentView: View {
     }
 
     private func copyPromptToClipboard() {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = entryManager.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let fullText = aiChatPrompt + "\n\n" + trimmedText
 
         let pasteboard = NSPasteboard.general
@@ -1196,13 +1232,13 @@ struct ContentView: View {
             print("Successfully deleted file: \(entry.filename)")
             
             // Remove the entry from the entries array
-            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries.remove(at: index)
+            if let index = entryManager.entries.firstIndex(where: { $0.id == entry.id }) {
+                entryManager.entries.remove(at: index)
                 
                 // If the deleted entry was selected, select the first entry or create a new one
-                if selectedEntryId == entry.id {
-                    if let firstEntry = entries.first {
-                        selectedEntryId = firstEntry.id
+                if entryManager.selectedEntryId == entry.id {
+                    if let firstEntry = entryManager.entries.first {
+                        entryManager.selectedEntryId = firstEntry.id
                         loadEntry(entry: firstEntry)
                     } else {
                         createNewEntry()
@@ -1251,8 +1287,8 @@ struct ContentView: View {
     
     private func exportEntryAsPDF(entry: HumanEntry) {
         // First make sure the current entry is saved
-        if selectedEntryId == entry.id {
-            saveEntry(entry: entry)
+        if entryManager.selectedEntryId == entry.id {
+            entryManager.saveEntry(entry: entry)
         }
         
         // Get entry content
@@ -1303,7 +1339,7 @@ struct ContentView: View {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineHeight
         
-        let font = NSFont(name: selectedFont, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        let font = NSFont(name: appearance.selectedFont, size: appearance.fontSize) ?? .systemFont(ofSize: appearance.fontSize)
         let textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1.0),
