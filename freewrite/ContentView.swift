@@ -15,7 +15,10 @@ struct HumanEntry: Identifiable {
     let id: UUID
     let date: String
     let filename: String
-    var previewText: String
+    let fileURL: URL
+    let modificationDate: Date
+    var previewText: String?  // nil means not loaded yet
+    var isPreviewLoading: Bool = false
     
     static func createNew() -> HumanEntry {
         let id = UUID()
@@ -28,11 +31,16 @@ struct HumanEntry: Identifiable {
         dateFormatter.dateFormat = "MMM d"
         let displayDate = dateFormatter.string(from: now)
         
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Freewrite")
+        let filename = "[\(id)]-[\(dateString)].md"
+        
         return HumanEntry(
             id: id,
             date: displayDate,
-            filename: "[\(id)]-[\(dateString)].md",
-            previewText: ""
+            filename: filename,
+            fileURL: documentsDirectory.appendingPathComponent(filename),
+            modificationDate: now,
+            previewText: nil
         )
     }
 }
@@ -198,21 +206,26 @@ struct ContentView: View {
         }
     }
     
-    // Add function to load existing entries
+    // Add function to load existing entries (metadata only)
     private func loadExistingEntries() {
         let documentsDirectory = getDocumentsDirectory()
         print("Looking for entries in: \(documentsDirectory.path)")
         
         do {
-            let fileURLs = try fileManager.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
+            // Load file metadata including modification dates
+            let resourceKeys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+            let fileURLs = try fileManager.contentsOfDirectory(
+                at: documentsDirectory,
+                includingPropertiesForKeys: resourceKeys
+            )
             let mdFiles = fileURLs.filter { $0.pathExtension == "md" }
             
             print("Found \(mdFiles.count) .md files")
             
-            // Process each file
-            let entriesWithDates = mdFiles.compactMap { fileURL -> (entry: HumanEntry, date: Date, content: String)? in
+            // Process each file (metadata only)
+            let entriesWithDates = mdFiles.compactMap { fileURL -> (entry: HumanEntry, date: Date)? in
                 let filename = fileURL.lastPathComponent
-                print("Processing: \(filename)")
+                print("Processing metadata for: \(filename)")
                 
                 // Extract UUID and date from filename - pattern [uuid]-[yyyy-MM-dd-HH-mm-ss].md
                 guard let uuidMatch = filename.range(of: "\\[(.*?)\\]", options: .regularExpression),
@@ -222,23 +235,20 @@ struct ContentView: View {
                     return nil
                 }
                 
-                // Parse the date string
-                let dateString = String(filename[dateMatch].dropFirst().dropLast())
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
-                
-                guard let fileDate = dateFormatter.date(from: dateString) else {
-                    print("Failed to parse date from filename: \(filename)")
-                    return nil
-                }
-                
-                // Read file contents for preview
+                // Get modification date from file system
                 do {
-                    let content = try String(contentsOf: fileURL, encoding: .utf8)
-                    let preview = content
-                        .replacingOccurrences(of: "\n", with: " ")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
+                    let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
+                    let modificationDate = resourceValues.contentModificationDate ?? Date()
+                    
+                    // Parse the date string for display
+                    let dateString = String(filename[dateMatch].dropFirst().dropLast())
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyy-MM-dd-HH-mm-ss"
+                    
+                    guard let fileDate = dateFormatter.date(from: dateString) else {
+                        print("Failed to parse date from filename: \(filename)")
+                        return nil
+                    }
                     
                     // Format display date
                     dateFormatter.dateFormat = "MMM d"
@@ -249,90 +259,57 @@ struct ContentView: View {
                             id: uuid,
                             date: displayDate,
                             filename: filename,
-                            previewText: truncated
+                            fileURL: fileURL,
+                            modificationDate: modificationDate,
+                            previewText: nil  // Will be loaded lazily
                         ),
-                        date: fileDate,
-                        content: content  // Store the full content to check for welcome message
+                        date: fileDate
                     )
                 } catch {
-                    print("Error reading file: \(error)")
+                    print("Error getting file metadata: \(error)")
                     return nil
                 }
             }
             
-            // Sort and extract entries
+            // Sort by modification date (most recent first)
             entries = entriesWithDates
-                .sorted { $0.date > $1.date }  // Sort by actual date from filename
+                .sorted { $0.entry.modificationDate > $1.entry.modificationDate }
                 .map { $0.entry }
             
-            print("Successfully loaded and sorted \(entries.count) entries")
+            print("Successfully loaded metadata for \(entries.count) entries")
             
-            // Check if we need to create a new entry
-            let calendar = Calendar.current
-            let today = Date()
-            let todayStart = calendar.startOfDay(for: today)
-            
-            // Check if there's an empty entry from today
-            let hasEmptyEntryToday = entries.contains { entry in
-                // Convert the display date (e.g. "Mar 14") to a Date object
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "MMM d"
-                if let entryDate = dateFormatter.date(from: entry.date) {
-                    // Set year component to current year since our stored dates don't include year
-                    var components = calendar.dateComponents([.year, .month, .day], from: entryDate)
-                    components.year = calendar.component(.year, from: today)
-                    
-                    // Get start of day for the entry date
-                    if let entryDateWithYear = calendar.date(from: components) {
-                        let entryDayStart = calendar.startOfDay(for: entryDateWithYear)
-                        return calendar.isDate(entryDayStart, inSameDayAs: todayStart) && entry.previewText.isEmpty
-                    }
-                }
-                return false
-            }
-            
-            // Check if we have only one entry and it's the welcome message
-            let hasOnlyWelcomeEntry = entries.count == 1 && entriesWithDates.first?.content.contains("Welcome to Freewrite.") == true
-            
-            if entries.isEmpty {
-                // First time user - create entry with welcome message
-                print("First time user, creating welcome entry")
-                createNewEntry()
-            } else if !hasEmptyEntryToday && !hasOnlyWelcomeEntry {
-                // No empty entry for today and not just the welcome entry - create new entry
-                print("No empty entry for today, creating new entry")
-                createNewEntry()
-            } else {
-                // Select the most recent empty entry from today or the welcome entry
-                if let todayEntry = entries.first(where: { entry in
-                    // Convert the display date (e.g. "Mar 14") to a Date object
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateFormat = "MMM d"
-                    if let entryDate = dateFormatter.date(from: entry.date) {
-                        // Set year component to current year since our stored dates don't include year
-                        var components = calendar.dateComponents([.year, .month, .day], from: entryDate)
-                        components.year = calendar.component(.year, from: today)
-                        
-                        // Get start of day for the entry date
-                        if let entryDateWithYear = calendar.date(from: components) {
-                            let entryDayStart = calendar.startOfDay(for: entryDateWithYear)
-                            return calendar.isDate(entryDayStart, inSameDayAs: todayStart) && entry.previewText.isEmpty
-                        }
-                    }
-                    return false
-                }) {
-                    selectedEntryId = todayEntry.id
-                    loadEntry(entry: todayEntry)
-                } else if hasOnlyWelcomeEntry {
-                    // If we only have the welcome entry, select it
-                    selectedEntryId = entries[0].id
-                    loadEntry(entry: entries[0])
-                }
-            }
+            // Handle entry selection logic
+            handleInitialEntrySelection()
             
         } catch {
             print("Error loading directory contents: \(error)")
             print("Creating default entry after error")
+            createNewEntry()
+        }
+    }
+    
+    private func handleInitialEntrySelection() {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayStart = calendar.startOfDay(for: today)
+        
+        // Check if there's a recent entry from today
+        let todayEntry = entries.first { entry in
+            let entryDayStart = calendar.startOfDay(for: entry.modificationDate)
+            return calendar.isDate(entryDayStart, inSameDayAs: todayStart)
+        }
+        
+        if entries.isEmpty {
+            // First time user - create entry with welcome message
+            print("First time user, creating welcome entry")
+            createNewEntry()
+        } else if let todayEntry = todayEntry {
+            // Select today's entry
+            selectedEntryId = todayEntry.id
+            loadEntry(entry: todayEntry)
+        } else {
+            // No entry for today - create new entry
+            print("No entry for today, creating new entry")
             createNewEntry()
         }
     }
@@ -940,10 +917,17 @@ struct ContentView: View {
                                     HStack(alignment: .top) {
                                         VStack(alignment: .leading, spacing: 4) {
                                             HStack {
-                                                Text(entry.previewText)
-                                                    .font(.system(size: 13))
-                                                    .lineLimit(1)
-                                                    .foregroundColor(.primary)
+                                                if entry.isPreviewLoading {
+                                                    Text("Loading...")
+                                                        .font(.system(size: 13))
+                                                        .lineLimit(1)
+                                                        .foregroundColor(.secondary)
+                                                } else {
+                                                    Text(entry.previewText ?? "")
+                                                        .font(.system(size: 13))
+                                                        .lineLimit(1)
+                                                        .foregroundColor(.primary)
+                                                }
                                                 
                                                 Spacer()
                                                 
@@ -1018,6 +1002,8 @@ struct ContentView: View {
                                 }
                                 .onAppear {
                                     NSCursor.pop()  // Reset cursor when button appears
+                                    // Load preview text lazily when entry becomes visible
+                                    loadPreviewText(for: entry)
                                 }
                                 .help("Click to select this entry")  // Add tooltip
                                 
@@ -1082,46 +1068,66 @@ struct ContentView: View {
         }
     }
     
-    private func updatePreviewText(for entry: HumanEntry) {
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent(entry.filename)
+    private func loadPreviewText(for entry: HumanEntry) {
+        // Don't load if already loading or loaded
+        guard entry.previewText == nil && !entry.isPreviewLoading else { return }
         
-        do {
-            let content = try String(contentsOf: fileURL, encoding: .utf8)
-            let preview = content
-                .replacingOccurrences(of: "\n", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
-            
-            // Find and update the entry in the entries array
-            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries[index].previewText = truncated
+        // Mark as loading
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            entries[index].isPreviewLoading = true
+        }
+        
+        // Load preview asynchronously
+        Task.detached {
+            do {
+                let content = try String(contentsOf: entry.fileURL, encoding: .utf8)
+                let preview = content
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
+                
+                await MainActor.run {
+                    // Find and update the entry in the entries array
+                    if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                        entries[index].previewText = truncated
+                        entries[index].isPreviewLoading = false
+                    }
+                }
+            } catch {
+                print("Error loading preview text: \(error)")
+                await MainActor.run {
+                    if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                        entries[index].previewText = "Error loading preview"
+                        entries[index].isPreviewLoading = false
+                    }
+                }
             }
-        } catch {
-            print("Error updating preview text: \(error)")
         }
     }
     
     private func saveEntry(entry: HumanEntry) {
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent(entry.filename)
-        
         do {
-            try text.write(to: fileURL, atomically: true, encoding: .utf8)
+            try text.write(to: entry.fileURL, atomically: true, encoding: .utf8)
             print("Successfully saved entry: \(entry.filename)")
-            updatePreviewText(for: entry)  // Update preview after saving
+            
+            // Update preview after saving
+            let preview = text
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let truncated = preview.isEmpty ? "" : (preview.count > 30 ? String(preview.prefix(30)) + "..." : preview)
+            
+            if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+                entries[index].previewText = truncated
+            }
         } catch {
             print("Error saving entry: \(error)")
         }
     }
     
     private func loadEntry(entry: HumanEntry) {
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent(entry.filename)
-        
         do {
-            if fileManager.fileExists(atPath: fileURL.path) {
-                text = try String(contentsOf: fileURL, encoding: .utf8)
+            if fileManager.fileExists(atPath: entry.fileURL.path) {
+                text = try String(contentsOf: entry.fileURL, encoding: .utf8)
                 print("Successfully loaded entry: \(entry.filename)")
             }
         } catch {
@@ -1143,8 +1149,6 @@ struct ContentView: View {
             }
             // Save the welcome message immediately
             saveEntry(entry: newEntry)
-            // Update the preview text
-            updatePreviewText(for: newEntry)
         } else {
             // Regular new entry starts with newlines
             text = "\n\n"
@@ -1187,11 +1191,8 @@ struct ContentView: View {
     
     private func deleteEntry(entry: HumanEntry) {
         // Delete the file from the filesystem
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent(entry.filename)
-        
         do {
-            try fileManager.removeItem(at: fileURL)
+            try fileManager.removeItem(at: entry.fileURL)
             print("Successfully deleted file: \(entry.filename)")
             
             // Remove the entry from the entries array
@@ -1255,12 +1256,9 @@ struct ContentView: View {
         }
         
         // Get entry content
-        let documentsDirectory = getDocumentsDirectory()
-        let fileURL = documentsDirectory.appendingPathComponent(entry.filename)
-        
         do {
             // Read the content of the entry
-            let entryContent = try String(contentsOf: fileURL, encoding: .utf8)
+            let entryContent = try String(contentsOf: entry.fileURL, encoding: .utf8)
             
             // Extract a title from the entry content and add .pdf extension
             let suggestedFilename = extractTitleFromContent(entryContent, date: entry.date) + ".pdf"
