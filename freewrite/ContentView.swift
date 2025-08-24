@@ -474,7 +474,7 @@ struct ContentView: View {
 
                 VStack(spacing: 2) {
                     Spacer()
-                        .frame(height: lineHeight * 8)
+                        .frame(height: abs(lineHeight * 8))
 
                     TextEditor(text: $entryManager.text)
                         .background(appearance.backgroundColor)
@@ -1536,7 +1536,7 @@ struct ContentView: View {
                     encoding: .utf8
                 )
             {
-                entryManager.text = "\n\n" + defaultMessage
+                entryManager.text = defaultMessage
             }
             // Save the welcome message immediately
             entryManager.saveEntry(entry: newEntry)
