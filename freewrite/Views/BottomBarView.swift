@@ -66,7 +66,7 @@ struct TimerButton: View {
     @EnvironmentObject var appearance: AppearanceSettings
 
     var body: some View {
-        Button(timerButtonTitle) {
+        Button(action: {
             let now = Date()
             if let lastClick = timer.lastClickTime,
                 now.timeIntervalSince(lastClick) < 0.3
@@ -78,16 +78,18 @@ struct TimerButton: View {
                 timer.timerIsRunning.toggle()
                 timer.lastClickTime = now
             }
+        }) {
+            Text(timerButtonTitle)
+                .foregroundColor(timerColor)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.1))
+                        .scaleEffect(hoverStates.isHoveringTimer ? 1.1 : 1.0)
+                        .animation(.spring(), value: hoverStates.isHoveringTimer)
+                )
         }
         .buttonStyle(.plain)
-        .padding(8)
-        .foregroundColor(timerColor)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.1))
-                .scaleEffect(hoverStates.isHoveringTimer ? 1.1 : 1.0)
-                .animation(.spring(), value: hoverStates.isHoveringTimer)
-        )
         .onHover { hovering in
             hoverStates.isHoveringTimer = hovering
             hoverStates.isHoveringBottomNav = hovering
@@ -157,24 +159,26 @@ struct ChatButton: View {
     @EnvironmentObject var entryManager: EntryManager
 
     var body: some View {
-        Button("Chat") {
+        Button(action: {
             uiState.showingChatMenu = true
             // Ensure didCopyPrompt is reset when opening the menu
             uiState.didCopyPrompt = false
+        }) {
+            Text("Chat")
+                .foregroundColor(
+                    hoverStates.isHoveringChat
+                        ? appearance.primaryActionColor
+                        : appearance.secondaryTextColor
+                )
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.1))
+                        .scaleEffect(hoverStates.isHoveringChat ? 1.1 : 1.0)
+                        .animation(.spring(), value: hoverStates.isHoveringChat)
+                )
         }
         .buttonStyle(.plain)
-        .padding(8)
-        .foregroundColor(
-            hoverStates.isHoveringChat
-                ? appearance.primaryActionColor
-                : appearance.secondaryTextColor
-        )
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.1))
-                .scaleEffect(hoverStates.isHoveringChat ? 1.1 : 1.0)
-                .animation(.spring(), value: hoverStates.isHoveringChat)
-        )
         .onHover { hovering in
             hoverStates.isHoveringChat = hovering
             hoverStates.isHoveringBottomNav = hovering
@@ -213,15 +217,15 @@ struct HistoryButton: View {
                         ? appearance.primaryActionColor
                         : appearance.secondaryTextColor
                 )
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.1))
+                        .scaleEffect(hoverStates.isHoveringClock ? 1.1 : 1.0)
+                        .animation(.spring(), value: hoverStates.isHoveringClock)
+                )
         }
-        .padding(8)
         .buttonStyle(.plain)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.1))
-                .scaleEffect(hoverStates.isHoveringClock ? 1.1 : 1.0)
-                .animation(.spring(), value: hoverStates.isHoveringClock)
-        )
         .onHover { hovering in
             hoverStates.isHoveringClock = hovering
             hoverStates.isHoveringBottomNav = hovering

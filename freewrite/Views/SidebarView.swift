@@ -246,7 +246,6 @@ struct SidebarView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .contentShape(Rectangle())
                         .onHover { hovering in
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 hoverStates.hoveredEntryId =
