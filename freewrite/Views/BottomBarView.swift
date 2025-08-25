@@ -52,9 +52,6 @@ struct UtilityButtonsView: View {
             ChatButton()
             Text("•")
                 .foregroundColor(.gray)
-            ThemeToggleButton()
-            Text("•")
-                .foregroundColor(.gray)
             HistoryButton()
         }
         .padding(8)
@@ -183,45 +180,6 @@ struct ChatButton: View {
             arrowEdge: .top
         ) {
             ChatPopoverView()
-        }
-    }
-}
-
-struct ThemeToggleButton: View {
-    @EnvironmentObject var appearance: AppearanceSettings
-    @EnvironmentObject var hoverStates: HoverStates
-
-    var body: some View {
-        Button(action: {
-            appearance.colorScheme =
-                appearance.colorScheme == .light
-                ? .dark : .light
-            // Save preference
-            UserDefaults.standard.set(
-                appearance.colorScheme == .light
-                    ? "light" : "dark",
-                forKey: "colorScheme"
-            )
-        }) {
-            Image(
-                systemName: appearance.colorScheme == .light
-                    ? "moon.fill" : "sun.max.fill"
-            )
-            .foregroundColor(
-                hoverStates.isHoveringThemeToggle
-                    ? appearance.primaryActionColor
-                    : appearance.secondaryTextColor
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            hoverStates.isHoveringThemeToggle = hovering
-            hoverStates.isHoveringBottomNav = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
         }
     }
 }

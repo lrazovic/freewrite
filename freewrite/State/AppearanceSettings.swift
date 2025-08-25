@@ -37,11 +37,4 @@ class AppearanceSettings: ObservableObject {
     var popoverTextColor: Color {
         colorScheme == .light ? Color.primary : Color.white
     }
-
-    init() {
-        // Load saved color scheme preference
-        let savedScheme =
-            UserDefaults.standard.string(forKey: "colorScheme") ?? "light"
-        colorScheme = savedScheme == "dark" ? .dark : .light
-    }
 }

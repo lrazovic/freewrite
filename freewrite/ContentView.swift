@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     // MARK: - State Objects
     @StateObject private var appearance = AppearanceSettings()
     @StateObject private var timer = TimerState()
@@ -44,7 +46,9 @@ struct ContentView: View {
         }
         .frame(minWidth: 1100, minHeight: 600)
         .animation(.easeInOut(duration: 0.16), value: uiState.showingSidebar)
-        .preferredColorScheme(appearance.colorScheme)
+        .onChange(of: colorScheme) {
+            appearance.colorScheme = colorScheme
+        }
         .environmentObject(appearance)
         .environmentObject(timer)
         .environmentObject(hoverStates)
