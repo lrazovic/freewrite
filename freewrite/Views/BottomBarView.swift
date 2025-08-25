@@ -35,8 +35,6 @@ struct BottomBarView: View {
     }
 }
 
-
-
 struct UtilityButtonsView: View {
     @EnvironmentObject var appearance: AppearanceSettings
     @EnvironmentObject var timer: TimerState
@@ -84,8 +82,12 @@ struct TimerButton: View {
         .buttonStyle(.plain)
         .padding(8)
         .foregroundColor(timerColor)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.gray.opacity(0.1))
+                .scaleEffect(hoverStates.isHoveringTimer ? 1.1 : 1.0)
+                .animation(.spring(), value: hoverStates.isHoveringTimer)
+        )
         .onHover { hovering in
             hoverStates.isHoveringTimer = hovering
             hoverStates.isHoveringBottomNav = hovering
@@ -167,6 +169,12 @@ struct ChatButton: View {
                 ? appearance.primaryActionColor
                 : appearance.secondaryTextColor
         )
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.gray.opacity(0.1))
+                .scaleEffect(hoverStates.isHoveringChat ? 1.1 : 1.0)
+                .animation(.spring(), value: hoverStates.isHoveringChat)
+        )
         .onHover { hovering in
             hoverStates.isHoveringChat = hovering
             hoverStates.isHoveringBottomNav = hovering
@@ -176,8 +184,6 @@ struct ChatButton: View {
                 NSCursor.pop()
             }
         }
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
         .popover(
             isPresented: $uiState.showingChatMenu,
             attachmentAnchor: .point(
@@ -210,8 +216,12 @@ struct HistoryButton: View {
         }
         .padding(8)
         .buttonStyle(.plain)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.gray.opacity(0.1))
+                .scaleEffect(hoverStates.isHoveringClock ? 1.1 : 1.0)
+                .animation(.spring(), value: hoverStates.isHoveringClock)
+        )
         .onHover { hovering in
             hoverStates.isHoveringClock = hovering
             hoverStates.isHoveringBottomNav = hovering
