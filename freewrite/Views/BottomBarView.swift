@@ -21,7 +21,8 @@ struct BottomBarView: View {
             Spacer()
             UtilityButtonsView()
         }
-        .padding()
+        .padding(.bottom, 16)
+        .padding(.horizontal)
         .background(
             Color(
                 appearance.colorScheme == .light ? .white : .black
@@ -52,7 +53,6 @@ struct UtilityButtonsView: View {
                 .foregroundColor(.gray)
             HistoryButton()
         }
-        .padding(8)
         .cornerRadius(6)
         .onHover { hovering in
             hoverStates.isHoveringBottomNav = hovering
