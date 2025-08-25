@@ -13,6 +13,7 @@ class EntryManager: ObservableObject {
     private var debounceTimer: Timer?
     private let fileManager = FileManager.default
     private let documentsDirectory: URL
+    private var hasPerformedInitialSelection = false
 
     init() {
         let directory = fileManager.urls(
@@ -33,7 +34,7 @@ class EntryManager: ObservableObject {
             }
         }
         self.documentsDirectory = directory
-        loadExistingEntries()
+        loadExistingEntriesMetadataOnly()
     }
 
     func saveEntry(entry: HumanEntry) {
@@ -93,7 +94,7 @@ class EntryManager: ObservableObject {
         return documentsDirectory
     }
 
-    func loadExistingEntries() {
+    func loadExistingEntriesMetadataOnly() {
         print("Looking for entries in: \(documentsDirectory.path)")
 
         do {
@@ -191,8 +192,7 @@ class EntryManager: ObservableObject {
                 "Successfully loaded metadata for \(self.entries.count) entries"
             )
 
-            // Handle entry selection logic
-            handleInitialEntrySelection()
+            // Don't handle initial entry selection here - wait for UI to be ready
 
         } catch {
             print("Error loading directory contents: \(error)")
@@ -201,15 +201,23 @@ class EntryManager: ObservableObject {
         }
     }
 
+    func performInitialEntrySelection() {
+        guard !hasPerformedInitialSelection else { return }
+        hasPerformedInitialSelection = true
+        handleInitialEntrySelection()
+    }
+
     private func handleInitialEntrySelection() {
         let calendar = Calendar.current
         let today = Date()
-        let todayStart = calendar.startOfDay(for: today)
 
         // Check if there's a recent entry from today
         let todayEntry = self.entries.first { entry in
-            let entryDayStart = calendar.startOfDay(for: entry.modificationDate)
-            return calendar.isDate(entryDayStart, inSameDayAs: todayStart)
+            let res = calendar.isDate(
+                entry.modificationDate,
+                inSameDayAs: today
+            )
+            return res
         }
 
         if self.entries.isEmpty {
@@ -218,6 +226,7 @@ class EntryManager: ObservableObject {
             createNewEntry()
         } else if let todayEntry = todayEntry {
             // Select today's entry
+            print("Found today's entry, selecting it:", todayEntry.filename)
             self.selectedEntryId = todayEntry.id
             loadEntry(entry: todayEntry)
         } else {
@@ -228,13 +237,20 @@ class EntryManager: ObservableObject {
     }
 
     func loadEntry(entry: HumanEntry) {
+        print("DEBUG: loadEntry called for:", entry.filename)
         do {
             if fileManager.fileExists(atPath: entry.fileURL.path) {
-                self.text = try String(
+                let content = try String(
                     contentsOf: entry.fileURL,
                     encoding: .utf8
                 )
-                print("Successfully loaded entry: \(entry.filename)")
+                self.text = content
+                print(
+                    "Successfully loaded entry: \(entry.filename), content length:",
+                    content.count
+                )
+            } else {
+                print("File does not exist at path:", entry.fileURL.path)
             }
         } catch {
             print("Error loading entry: \(error)")
@@ -260,13 +276,9 @@ class EntryManager: ObservableObject {
             {
                 self.text = defaultMessage
             }
-            // Save the welcome message immediately
-            saveEntry(entry: newEntry)
         } else {
             // Regular new entry starts empty
             self.text = ""
-            // Save the empty entry
-            saveEntry(entry: newEntry)
         }
     }
 

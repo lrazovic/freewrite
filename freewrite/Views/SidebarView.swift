@@ -6,6 +6,13 @@ struct SidebarView: View {
     @EnvironmentObject var entryManager: EntryManager
     @EnvironmentObject var hoverStates: HoverStates
 
+    // Only show entries that have been saved to disk
+    private var savedEntries: [HumanEntry] {
+        return entryManager.entries.filter { entry in
+            FileManager.default.fileExists(atPath: entry.fileURL.path)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -54,7 +61,7 @@ struct SidebarView: View {
             // Entries List
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(entryManager.entries) { entry in
+                    ForEach(savedEntries) { entry in
                         Button(action: {
                             if entryManager.selectedEntryId != entry.id {
                                 // Save current entry before switching
@@ -253,7 +260,7 @@ struct SidebarView: View {
                         }
                         .help("Click to select this entry")  // Add tooltip
 
-                        if entry.id != entryManager.entries.last?.id {
+                        if entry.id != savedEntries.last?.id {
                             Divider()
                         }
                     }

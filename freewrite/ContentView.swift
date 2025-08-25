@@ -56,21 +56,26 @@ struct ContentView: View {
         .environmentObject(entryManager)
         .onAppear {
             uiState.showingSidebar = false  // Hide sidebar by default
-            
+
             // Create new entry if this is a new window (more than 1 window exists)
             if NSApplication.shared.windows.count > 1 {
                 entryManager.createNewEntry()
+            } else {
+                // Perform initial entry selection now that UI bindings are established
+                entryManager.performInitialEntrySelection()
             }
         }
         .onChange(of: entryManager.text) { oldValue, newValue in
             // Only save if the text is not empty (after trimming whitespace)
-            let trimmedText = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            
+            let trimmedText = newValue.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
             if !trimmedText.isEmpty,
-               let currentId = entryManager.selectedEntryId,
-               let currentEntry = entryManager.entries.first(where: {
-                   $0.id == currentId
-               })
+                let currentId = entryManager.selectedEntryId,
+                let currentEntry = entryManager.entries.first(where: {
+                    $0.id == currentId
+                })
             {
                 entryManager.debouncedSave(entry: currentEntry)
             }
