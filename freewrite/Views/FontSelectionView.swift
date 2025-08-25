@@ -36,14 +36,10 @@ struct FontOptionsView: View {
     private var fontOptions: [(name: String, fontValue: String)] {
         return Constants.standardFonts.compactMap { fontValue in
             switch fontValue {
-            case "Lato-Regular":
-                return ("Lato", fontValue)
-            case "Arial":
-                return ("Arial", fontValue)
-            case ".AppleSystemUIFont":
-                return ("System", fontValue)
             case "Palatino":
                 return ("Palatino", fontValue)
+            case "Baskerville":
+                return ("Baskerville", fontValue)
             default:
                 return nil
             }
@@ -74,7 +70,7 @@ struct FontOptionsView: View {
             ForEach(Array(fontOptions.enumerated()), id: \.offset) { _, font in
                 Text("•")
                     .foregroundColor(.gray)
-                
+
                 FontButton(
                     name: font.name,
                     fontValue: font.fontValue
@@ -118,10 +114,10 @@ struct FontOptionsView: View {
 struct FontButton: View {
     @EnvironmentObject var appearance: AppearanceSettings
     @EnvironmentObject var hoverStates: HoverStates
-    
+
     let name: String
     let fontValue: String
-    
+
     var body: some View {
         Button(name) {
             appearance.selectedFont = fontValue

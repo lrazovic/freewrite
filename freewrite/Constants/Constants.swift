@@ -3,10 +3,8 @@ import Foundation
 
 struct Constants {
     static let availableFonts = NSFontManager.shared.availableFontFamilies
-    static let standardFonts = [
-        "Lato-Regular", "Arial", ".AppleSystemUIFont", "Palatino",
-    ]
-    static let fontSizes: [CGFloat] = [16, 18, 20, 22, 24, 26]
+    static let standardFonts = ["Palatino", "Baskerville"]
+    static let fontSizes: [CGFloat] = [16, 18, 20]
     static let placeholderOptions = [
         "Begin writing",
         "Pick a thought and go",
