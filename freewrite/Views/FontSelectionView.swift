@@ -8,8 +8,8 @@ struct FontSelectionView: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: {}) {
-                Text("􀅒")
-                    .font(.system(size: 13, weight: .bold))
+                Image(systemName: "textformat")
+                    .font(.system(size: 13, weight: .regular))
             }
             .buttonStyle(.plain)
             .foregroundColor(appearance.primaryActionColor)
@@ -20,7 +20,7 @@ struct FontSelectionView: View {
         }
         .padding(8)
         .background(Color.gray.opacity(0.1))
-        .cornerRadius(6)
+        .cornerRadius(8)
         .onHover { hovering in
             withAnimation(.spring()) {
                 isHovering = hovering
@@ -32,6 +32,23 @@ struct FontSelectionView: View {
 struct FontOptionsView: View {
     @EnvironmentObject var appearance: AppearanceSettings
     @EnvironmentObject var hoverStates: HoverStates
+
+    private var fontOptions: [(name: String, fontValue: String)] {
+        return Constants.standardFonts.compactMap { fontValue in
+            switch fontValue {
+            case "Lato-Regular":
+                return ("Lato", fontValue)
+            case "Arial":
+                return ("Arial", fontValue)
+            case ".AppleSystemUIFont":
+                return ("System", fontValue)
+            case "Palatino":
+                return ("Palatino", fontValue)
+            default:
+                return nil
+            }
+        } + [("Serif", "Times New Roman")]
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -54,76 +71,14 @@ struct FontOptionsView: View {
                 hoverStates.isHoveringSize = hovering
             }
 
-            Text("•")
-                .foregroundColor(.gray)
-
-            Button("Lato") {
-                appearance.selectedFont = "Lato-Regular"
-                appearance.currentRandomFont = ""
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(
-                hoverStates.hoveredFont == "Lato"
-                    ? appearance.primaryActionColor
-                    : appearance.secondaryTextColor
-            )
-            .onHover { hovering in
-                hoverStates.hoveredFont =
-                    hovering ? "Lato" : nil
-            }
-
-            Text("•")
-                .foregroundColor(.gray)
-
-            Button("Palatino") {
-                appearance.selectedFont = "Palatino"
-                appearance.currentRandomFont = ""
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(
-                hoverStates.hoveredFont == "Palatino"
-                    ? appearance.primaryActionColor
-                    : appearance.secondaryTextColor
-            )
-            .onHover { hovering in
-                hoverStates.hoveredFont =
-                    hovering ? "Palatino" : nil
-            }
-
-            Text("•")
-                .foregroundColor(.gray)
-
-            Button("System") {
-                appearance.selectedFont = ".AppleSystemUIFont"
-                appearance.currentRandomFont = ""
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(
-                hoverStates.hoveredFont == "System"
-                    ? appearance.primaryActionColor
-                    : appearance.secondaryTextColor
-            )
-            .onHover { hovering in
-                hoverStates.hoveredFont =
-                    hovering ? "System" : nil
-            }
-
-            Text("•")
-                .foregroundColor(.gray)
-
-            Button("Serif") {
-                appearance.selectedFont = "Times New Roman"
-                appearance.currentRandomFont = ""
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(
-                hoverStates.hoveredFont == "Serif"
-                    ? appearance.primaryActionColor
-                    : appearance.secondaryTextColor
-            )
-            .onHover { hovering in
-                hoverStates.hoveredFont =
-                    hovering ? "Serif" : nil
+            ForEach(Array(fontOptions.enumerated()), id: \.offset) { _, font in
+                Text("•")
+                    .foregroundColor(.gray)
+                
+                FontButton(
+                    name: font.name,
+                    fontValue: font.fontValue
+                )
             }
 
             Text("•")
@@ -157,5 +112,29 @@ struct FontOptionsView: View {
     private var randomButtonTitle: String {
         return appearance.currentRandomFont.isEmpty
             ? "Random" : "Random [\(appearance.currentRandomFont)]"
+    }
+}
+
+struct FontButton: View {
+    @EnvironmentObject var appearance: AppearanceSettings
+    @EnvironmentObject var hoverStates: HoverStates
+    
+    let name: String
+    let fontValue: String
+    
+    var body: some View {
+        Button(name) {
+            appearance.selectedFont = fontValue
+            appearance.currentRandomFont = ""
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(
+            hoverStates.hoveredFont == name
+                ? appearance.primaryActionColor
+                : appearance.secondaryTextColor
+        )
+        .onHover { hovering in
+            hoverStates.hoveredFont = hovering ? name : nil
+        }
     }
 }

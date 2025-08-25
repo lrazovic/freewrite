@@ -43,7 +43,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 1100, minHeight: 600)
-        .animation(.easeInOut(duration: 0.2), value: uiState.showingSidebar)
+        .animation(.easeInOut(duration: 0.16), value: uiState.showingSidebar)
         .preferredColorScheme(appearance.colorScheme)
         .environmentObject(appearance)
         .environmentObject(timer)
@@ -54,7 +54,6 @@ struct ContentView: View {
             uiState.showingSidebar = false  // Hide sidebar by default
         }
         .onChange(of: entryManager.text) { oldValue, newValue in
-            // Use the debounced save method from EntryManager
             if let currentId = entryManager.selectedEntryId,
                 let currentEntry = entryManager.entries.first(where: {
                     $0.id == currentId

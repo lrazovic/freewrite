@@ -6,7 +6,7 @@ class AppearanceSettings: ObservableObject {
     @Published var fontSize: CGFloat = 18
     @Published var colorScheme: ColorScheme = .light
 
-    // Theme colors computed properties (DRY principle)
+    // Theme colors computed properties
     var backgroundColor: Color {
         colorScheme == .light ? .white : .black
     }

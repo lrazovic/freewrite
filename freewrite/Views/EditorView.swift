@@ -41,6 +41,7 @@ struct EditorView: View {
                             .foregroundColor(
                                 appearance.placeholderTextColor
                             )
+                            .padding(.leading, 5)
                             .allowsHitTesting(false)
                     }
                 },
