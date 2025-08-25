@@ -6,7 +6,7 @@ struct ChatPopoverView: View {
     @EnvironmentObject var entryManager: EntryManager
 
     var body: some View {
-        VStack(spacing: 0) {  // Wrap everything in a VStack for consistent styling and onChange
+        VStack(spacing: 0) {
             let trimmedText = entryManager.text
                 .trimmingCharacters(
                     in: .whitespacesAndNewlines

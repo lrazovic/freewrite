@@ -16,11 +16,6 @@ struct freewriteApp: App {
         .windowToolbarStyle(.unifiedCompact)
         .windowResizability(.contentSize)
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Entry") {}
-                    .keyboardShortcut("n", modifiers: .command)
-            }
-            
             CommandGroup(after: .windowArrangement) {
                 Button("Toggle Full Screen") {
                     NSApp.keyWindow?.toggleFullScreen(nil)

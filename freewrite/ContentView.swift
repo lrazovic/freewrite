@@ -63,10 +63,14 @@ struct ContentView: View {
             }
         }
         .onChange(of: entryManager.text) { oldValue, newValue in
-            if let currentId = entryManager.selectedEntryId,
-                let currentEntry = entryManager.entries.first(where: {
-                    $0.id == currentId
-                })
+            // Only save if the text is not empty (after trimming whitespace)
+            let trimmedText = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if !trimmedText.isEmpty,
+               let currentId = entryManager.selectedEntryId,
+               let currentEntry = entryManager.entries.first(where: {
+                   $0.id == currentId
+               })
             {
                 entryManager.debouncedSave(entry: currentEntry)
             }
@@ -77,20 +81,6 @@ struct ContentView: View {
             } else if timer.timeRemaining == 0 {
                 timer.timerIsRunning = false
             }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: NSWindow.willEnterFullScreenNotification
-            )
-        ) { _ in
-            uiState.isFullscreen = true
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: NSWindow.willExitFullScreenNotification
-            )
-        ) { _ in
-            uiState.isFullscreen = false
         }
     }
 
