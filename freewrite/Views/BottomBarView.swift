@@ -52,12 +52,6 @@ struct UtilityButtonsView: View {
             ChatButton()
             Text("•")
                 .foregroundColor(.gray)
-            FullscreenButton()
-            Text("•")
-                .foregroundColor(.gray)
-            NewEntryButton()
-            Text("•")
-                .foregroundColor(.gray)
             ThemeToggleButton()
             Text("•")
                 .foregroundColor(.gray)
@@ -189,69 +183,6 @@ struct ChatButton: View {
             arrowEdge: .top
         ) {
             ChatPopoverView()
-        }
-    }
-}
-
-struct FullscreenButton: View {
-    @EnvironmentObject var uiState: UIState
-    @EnvironmentObject var hoverStates: HoverStates
-    @EnvironmentObject var appearance: AppearanceSettings
-
-    var body: some View {
-        Button(
-            uiState.isFullscreen ? "Minimize" : "Fullscreen"
-        ) {
-            if let window = NSApplication.shared.windows
-                .first
-            {
-                window.toggleFullScreen(nil)
-            }
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(
-            hoverStates.isHoveringFullscreen
-                ? appearance.primaryActionColor
-                : appearance.secondaryTextColor
-        )
-        .onHover { hovering in
-            hoverStates.isHoveringFullscreen = hovering
-            hoverStates.isHoveringBottomNav = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-    }
-}
-
-struct NewEntryButton: View {
-    @EnvironmentObject var entryManager: EntryManager
-    @EnvironmentObject var hoverStates: HoverStates
-    @EnvironmentObject var appearance: AppearanceSettings
-
-    var body: some View {
-        Button(action: {
-            entryManager.createNewEntry()
-        }) {
-            Text("New Entry")
-                .font(.system(size: 13))
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(
-            hoverStates.isHoveringNewEntry
-                ? appearance.primaryActionColor
-                : appearance.secondaryTextColor
-        )
-        .onHover { hovering in
-            hoverStates.isHoveringNewEntry = hovering
-            hoverStates.isHoveringBottomNav = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
         }
     }
 }

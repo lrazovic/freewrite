@@ -52,6 +52,11 @@ struct ContentView: View {
         .environmentObject(entryManager)
         .onAppear {
             uiState.showingSidebar = false  // Hide sidebar by default
+            
+            // Create new entry if this is a new window (more than 1 window exists)
+            if NSApplication.shared.windows.count > 1 {
+                entryManager.createNewEntry()
+            }
         }
         .onChange(of: entryManager.text) { oldValue, newValue in
             if let currentId = entryManager.selectedEntryId,
