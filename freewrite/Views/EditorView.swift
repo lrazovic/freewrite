@@ -21,11 +21,6 @@ struct EditorView: View {
             .frame(maxWidth: 660)
             .autocorrectionDisabled(false)
             .colorScheme(appearance.colorScheme)
-            .onAppear {
-                uiState.placeholderText =
-                    Constants.placeholderOptions.randomElement()
-                    ?? "Begin writing"
-            }
             .overlay(
                 ZStack(alignment: .topLeading) {
                     if text.trimmingCharacters(
