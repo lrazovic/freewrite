@@ -82,7 +82,10 @@ struct TimerButton: View {
             }
         }
         .buttonStyle(.plain)
+        .padding(8)
         .foregroundColor(timerColor)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
         .onHover { hovering in
             hoverStates.isHoveringTimer = hovering
             hoverStates.isHoveringBottomNav = hovering
@@ -158,6 +161,7 @@ struct ChatButton: View {
             uiState.didCopyPrompt = false
         }
         .buttonStyle(.plain)
+        .padding(8)
         .foregroundColor(
             hoverStates.isHoveringChat
                 ? appearance.primaryActionColor
@@ -172,6 +176,8 @@ struct ChatButton: View {
                 NSCursor.pop()
             }
         }
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
         .popover(
             isPresented: $uiState.showingChatMenu,
             attachmentAnchor: .point(
@@ -202,7 +208,10 @@ struct HistoryButton: View {
                         : appearance.secondaryTextColor
                 )
         }
+        .padding(8)
         .buttonStyle(.plain)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
         .onHover { hovering in
             hoverStates.isHoveringClock = hovering
             hoverStates.isHoveringBottomNav = hovering
